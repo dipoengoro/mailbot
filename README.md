@@ -198,6 +198,20 @@ Setelah dipublikasikan, ubah `docker-compose.yml`: ganti `build: .` menjadi
 `image: ghcr.io/<username>/mailbot:1.0.0` — supaya orang lain (atau server lain)
 tinggal `docker compose up -d`.
 
+#### Tanpa registry: pakai berkas image dari Releases
+
+Kalau registry belum dipakai, image-nya tersedia sebagai berkas di halaman
+[Releases](https://github.com/dipoengoro/mailbot/releases) — tinggal dimuat:
+
+```bash
+curl -LO https://github.com/dipoengoro/mailbot/releases/download/v1.0.0/mailbot-1.0.0-image.tar.gz
+curl -LO https://github.com/dipoengoro/mailbot/releases/download/v1.0.0/mailbot-1.0.0-image.tar.gz.sha256
+sha256sum -c mailbot-1.0.0-image.tar.gz.sha256      # pastikan berkasnya utuh
+docker load -i mailbot-1.0.0-image.tar.gz           # menghasilkan image mailbot:1.0.0
+docker run -d --name mailbot --restart unless-stopped \
+  --env-file .env -v "$PWD/data:/data" -v "$PWD/view:/view" mailbot:1.0.0
+```
+
 Yang akan terlihat di log: `supervisor aktif`, `poller mulai (interval 180 detik)`,
 `fase D aktif`, lalu baris ringkasan per akun:
 
