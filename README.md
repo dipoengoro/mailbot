@@ -152,9 +152,51 @@ docker compose run --rm mailbot python3 config.py
 ### 4. Jalankan
 
 ```bash
-docker compose up -d --build
+docker compose up -d --build          # build image sendiri dari Dockerfile
 docker compose logs -f mailbot
 ```
+
+Atau pakai image yang sudah dibuild orang lain / CI (tanpa build lokal):
+
+```bash
+docker compose pull && docker compose up -d          # kalau compose pakai `image:`
+# atau langsung:
+docker run -d --name mailbot --restart unless-stopped \
+  --env-file .env -v "$PWD/data:/data" -v "$PWD/view:/view" \
+  ghcr.io/dipoengoro/mailbot:latest
+```
+
+### 5. Publikasikan image (opsional)
+
+Repo ini sengaja tidak mengunci ke satu registry: image dibuat tanpa rahasia apa pun,
+jadi aman dibagikan. Cara paling gampang adalah GitHub Actions (build otomatis di
+GitHub, tanpa menyimpan kredensial di komputermu):
+
+```bash
+cp deploy/ghcr-publish.yml.example .github/workflows/publish.yml
+git add .github/workflows/publish.yml && git commit -m "ci: publikasi image" && git push
+# lalu: git tag 1.0.0 && git push origin 1.0.0
+```
+
+> Push yang menambah `.github/workflows/` butuh token git dengan scope **workflow**.
+
+Mau push dari komputer sendiri?
+
+```bash
+# GitHub Container Registry (ghcr.io)
+echo "$GH_TOKEN" | docker login ghcr.io -u <username> --password-stdin   # token butuh write:packages
+docker build -t ghcr.io/<username>/mailbot:1.0.0 .
+docker push ghcr.io/<username>/mailbot:1.0.0
+
+# Docker Hub
+docker login -u <username>                                         # butuh access token, bukan sandi akun
+docker tag mailbot:1.0.0 <username>/mailbot:1.0.0
+docker push <username>/mailbot:1.0.0
+```
+
+Setelah dipublikasikan, ubah `docker-compose.yml`: ganti `build: .` menjadi
+`image: ghcr.io/<username>/mailbot:1.0.0` — supaya orang lain (atau server lain)
+tinggal `docker compose up -d`.
 
 Yang akan terlihat di log: `supervisor aktif`, `poller mulai (interval 180 detik)`,
 `fase D aktif`, lalu baris ringkasan per akun:
@@ -171,7 +213,7 @@ docker compose exec mailbot python3 poller.py --test
 
 Kartu akan muncul di Telegram dalam ≤ `MAILBOT_POLL_INTERVAL` detik.
 
-### 5. Halaman "Lihat" (opsional tapi disarankan)
+### 6. Halaman "Lihat" (opsional tapi disarankan)
 
 Tombol 👁 Lihat menulis file HTML ke `MAILBOT_VIEW_DIR` dan mengirim link
 `MAILBOT_VIEW_BASE/<nama-file>`. Nama file memuat token acak 16 karakter, jadi link
@@ -188,7 +230,7 @@ Pilihan menyajikannya:
   # lalu arahkan MAILBOT_VIEW_BASE ke http://<host>:8080 (atau pasang proxy di depannya)
   ```
 
-### 6. Tanpa Docker
+### 7. Tanpa Docker
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate     # tidak ada dependensi, venv sekedar rapi
