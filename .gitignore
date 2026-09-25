@@ -1,0 +1,24 @@
+# --- RAHASIA: tidak boleh masuk repo (jangan dihapus dari daftar ini) ---
+.env
+.env.*
+!.env.example
+
+# --- DATA RUNTIME: isinya data pribadi (subjek email, Message-ID, alamat pengirim) ---
+state.json
+state_poller.json
+state_handler.json
+unsub.json
+data/
+view/
+backup/
+.handler.lock
+.handler.lock2
+.heartbeat
+
+# --- log & sampah ---
+*.log
+*.tmp
+__pycache__/
+*.py[cod]
+.venv/
+venv/

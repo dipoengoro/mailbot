@@ -1,0 +1,19 @@
+# Konteks build: image hanya butuh kode + assets/ + scripts/healthcheck.py.
+# Rahasia & data runtime TIDAK boleh ikut ke image.
+.env
+.env.*
+!.env.example
+state*.json
+unsub.json
+*.log
+*.tmp
+backup/
+data/
+view/
+__pycache__/
+*.py[cod]
+.git/
+.github/
+docs/
+deploy/
+*.md

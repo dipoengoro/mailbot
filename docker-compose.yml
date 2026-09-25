@@ -1,0 +1,36 @@
+# mailbot — contoh deployment.
+#   cp .env.example .env   (isi nilainya, chmod 600)
+#   docker compose up -d --build
+#   docker compose logs -f mailbot
+#
+# mailbot hanya KONEK KELUAR (IMAP, SMTP, api.telegram.org), jadi tidak perlu
+# port publik dan tidak perlu masuk jaringan reverse proxy.
+
+services:
+  mailbot:
+    build: .
+    # Kalau pakai image yang sudah dipublikasikan, ganti baris di atas dengan:
+    # image: ghcr.io/USERNAME/mailbot:latest
+    container_name: mailbot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # PENTING: /data menyimpan state, log, dan heartbeat — BACKUP folder ini.
+      - ./data:/data
+      # /view dibaca web server untuk menyajikan halaman "Lihat".
+      - ./view:/view
+
+  # Opsional: web server kecil untuk membuka halaman hasil render.
+  # Kalau sudah punya reverse proxy sendiri (Caddy/nginx/Traefik), service ini
+  # tidak perlu — lihat deploy/Caddyfile.example.
+  viewer:
+    image: nginx:alpine
+    container_name: mailbot-viewer
+    restart: unless-stopped
+    profiles: ["viewer"]
+    volumes:
+      - ./view:/usr/share/nginx/html:ro
+    ports:
+      # Sengaja hanya di localhost: isi halaman adalah isi email. Taruh reverse
+      # proxy + HTTPS di depannya kalau mau diakses dari luar.
+      - "127.0.0.1:8080:80"

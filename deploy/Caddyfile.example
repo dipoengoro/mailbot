@@ -1,0 +1,21 @@
+# Sajikan halaman hasil render mailbot (folder MAILBOT_VIEW_DIR).
+#
+# Akses dijaga token acak 128-bit di NAMA FILE (bukan login), supaya link tetap
+# bisa diklik dari HP. Karena itu JANGAN di-cache dan JANGAN diindeks:
+# isinya isi email asli.
+#
+# mail.example.com {
+#     root * /srv/mailview
+#     file_server
+#     header {
+#         Cache-Control "no-store"
+#         X-Robots-Tag "noindex, nofollow"
+#         Referrer-Policy "no-referrer"
+#     }
+# }
+#
+# Catatan kalau di belakang Cloudflare:
+# - matikan Scrape Shield -> Email Address Obfuscation, kalau tidak alamat email
+#   di halaman berubah jadi [email protected] dan CSP halaman memblokir script
+#   pembukanya sehingga alamatnya rusak;
+# - MAILBOT_VIEW_BASE harus sama persis dengan domain di atas (termasuk skema).
