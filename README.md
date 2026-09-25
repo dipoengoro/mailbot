@@ -166,19 +166,22 @@ docker run -d --name mailbot --restart unless-stopped \
   ghcr.io/dipoengoro/mailbot:latest
 ```
 
-### 5. Publikasikan image (opsional)
+### 5. Image yang sudah dipublikasikan (opsional)
 
-Repo ini sengaja tidak mengunci ke satu registry: image dibuat tanpa rahasia apa pun,
-jadi aman dibagikan. Cara paling gampang adalah GitHub Actions (build otomatis di
-GitHub, tanpa menyimpan kredensial di komputermu):
+Repo ini memakai GitHub Actions untuk mempublikasikan image ke GitHub Container Registry,
+jadi tidak perlu menyimpan kredensial di komputermu sendiri:
 
 ```bash
-cp deploy/ghcr-publish.yml.example .github/workflows/publish.yml
-git add .github/workflows/publish.yml && git commit -m "ci: publikasi image" && git push
-# lalu: git tag 1.0.0 && git push origin 1.0.0
+docker pull ghcr.io/dipoengoro/mailbot:latest
 ```
 
-> Push yang menambah `.github/workflows/` butuh token git dengan scope **workflow**.
+Tag yang tersedia: `latest` dan `main` (dari cabang utama) serta tag versi
+(`1.0.1`, `1.0`) yang lahir saat sebuah tag git (`v1.0.1`) di-push. Untuk memakai image itu
+di compose, ganti `build: .` menjadi `image: ghcr.io/dipoengoro/mailbot:latest`.
+
+Workflow-nya ada di `.github/workflows/publish.yml` (salinan contohnya di
+`deploy/ghcr-publish.yml.example`, tinggal sesuaikan kalau kamu fork). Kalau mau
+mempublikasikan dari komputermu sendiri ke registry lain:
 
 Mau push dari komputer sendiri?
 
