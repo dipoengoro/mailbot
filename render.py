@@ -93,6 +93,17 @@ if not html:
     _teks = re.sub(r'https?://[^\s<>"]+', _link_teks, _teks)
     html = '<pre style="white-space:pre-wrap;font:14px/1.5 monospace">' + _teks + '</pre>'
 
+# Gmail (dan banyak pengirim lain) menulis atribut TANPA tanda kutip: <a href=https://...>.
+# Semua penyaringan di bawah memakai pola berkutip, jadi normalkan dulu. Tanpa ini, link
+# seperti itu lolos: href-nya tetap hidup dan langsung bisa diklik sebelum tombol
+# "aktifkan link" ditekan (kejadian 26 Sep 2026, email Google Cloud).
+def _kutipi(m):
+    return '%s="%s"' % (m.group(1), m.group(2))
+
+
+html = re.sub(r'\b(href|src|background)\s*=\s*(?!["\'])([^\s>"\']+)(?=[\s>])', _kutipi, html, flags=re.I)
+
+
 def _netral(m):
     """Anchor yang isinya gambar/tabel: href dicabut (jadi data-href) supaya TETAP mati,
     markup-nya dibiarkan utuh, dan tujuan ditulis di dalamnya."""
