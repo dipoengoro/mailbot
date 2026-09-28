@@ -101,7 +101,25 @@ def _kutipi(m):
     return '%s="%s"' % (m.group(1), m.group(2))
 
 
-html = re.sub(r'\b(href|src|background)\s*=\s*(?!["\'])([^\s>"\']+)(?=[\s>])', _kutipi, html, flags=re.I)
+html = re.sub(r'\b(href|src|background|width|style)\s*=\s*(?!["\'])([^\s>"\']+)(?=[\s>])', _kutipi, html, flags=re.I)
+
+# Email marketing sering memaku lebar dalam px (width:360px di <td>, tombol width:330px).
+# Tabel tidak bisa menyusut di bawah lebar selnya, dan `max-width` diabaikan untuk table cell,
+# jadi di layar HP isinya kepotong di kanan (kejadian 28 Sep 2026, newsletter HoYoverse).
+# Normalisasi: lebar px >= 300 -> 100% (ikut lebar layar); min-width besar dimatikan.
+def _fleksibel(m):
+    st = m.group(1)
+    st = re.sub(r'(?i)(?<![-\w])width\s*:\s*(\d{3,})px',
+                lambda x: 'width:100%' if int(x.group(1)) >= 300 else x.group(0), st)
+    st = re.sub(r'(?i)(?<![-\w])min-width\s*:\s*\d{3,}px', 'min-width:0', st)
+    st = re.sub(r'(?i)(?<![-\w])max-width\s*:\s*\d{3,}px', 'max-width:100%', st)
+    return 'style="%s"' % st
+
+
+html = re.sub(r'style\s*=\s*"([^"]*)"', _fleksibel, html, flags=re.I)
+html = re.sub(r'(?i)\swidth\s*=\s*"(\d{3,})"',
+              lambda m: ' width="100%"' if int(m.group(1)) >= 300 else m.group(0), html)
+
 
 
 def _netral(m):
@@ -286,9 +304,12 @@ page = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
  .bodycard a[data-href]{{border-bottom:1px solid #1f6feb}}
  .bodycard > *{{margin-left:auto !important;margin-right:auto !important;float:none !important}}
  .bodycard > table, .bodycard > div > table, .bodycard > center > table{{margin-left:auto !important;margin-right:auto !important;float:none !important}}
- .bodycard table{{max-width:100% !important;width:auto !important}}
- .bodycard img{{max-width:100% !important;height:auto !important}}
- .bodycard td, .bodycard th{{max-width:100% !important}}
+ .bodycard table{{max-width:100% !important;width:auto !important;min-width:0 !important}}
+ .bodycard img{{max-width:100% !important;height:auto !important;min-width:0 !important}}
+ .bodycard td, .bodycard th{{max-width:100% !important;min-width:0 !important}}
+ .bodycard div, .bodycard center, .bodycard p, .bodycard span{{max-width:100% !important;min-width:0 !important}}
+ .bodycard tbody, .bodycard thead, .bodycard tr{{max-width:100% !important}}
+ .bodycard *{{box-sizing:border-box !important}}
  .tujuan{{font-size:11px;color:#7fa8d8}}
  .waspada{{font-size:11px;color:#e3b341}} .bahaya{{font-size:11px;color:#f85149;font-weight:600}}
 </style></head><body>
@@ -307,6 +328,7 @@ page = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
   {'' if not _HOSTS_TUJUAN else '<div class="rows" style="font-size:11px;color:#7d8fa3;margin-top:6px">🔗 tujuan link: ' + ' &middot; '.join(list(dict.fromkeys(_HOSTS_TUJUAN))[:8]) + '</div>'}
   <button id="unblock" type="button">🖼 tampilkan gambar ({before})</button>
   <button id="aktiflink" type="button" style="background:#1f6feb">🔗 aktifkan link</button>
+  <button id="fit" type="button" style="background:#8957e5;display:none">🔍 muat ke layar</button>
  </div>
 
  <div class="bodycard">{html}</div>
