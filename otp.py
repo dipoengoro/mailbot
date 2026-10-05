@@ -4,7 +4,7 @@
 Tujuan: kartu Telegram cukup menampilkan kodenya, jadi kode tidak perlu dibuka di
 halaman render. Dipakai poller (untuk kartu) dan bisa dipakai handler.
 
-Pelajaran dari 219 email OTP nyata (akun juhyuko@gmail.com + me@dipo.sh):
+Pelajaran dari 219 email OTP nyata (dua akun yang dipantau):
 - Kode ada di SUBJEK pada banyak pengirim: "Your Code - 98986", "Kode verifikasi
   email: 955980", "601272 adalah kode verifikasi X Anda", "Kode Verifikasi WhatsApp:
   761-810", "Your Hetzner verification code is 389000".
