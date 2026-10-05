@@ -20,6 +20,7 @@ from email.mime.text import MIMEText
 from email.utils import formatdate, make_msgid
 
 import config as C
+import otp as OTP
 
 STATE = C.path('state_poller.json')
 ACCTS = C.ACCTS             # [(tag, alamat email), ...] dari MAILBOT_ACCOUNTS
@@ -159,6 +160,49 @@ def save(st):
         pass
 
 
+def otp_kartu(M, uid, subj):
+    """Baris kode OTP untuk kartu (kode tidak perlu dibuka di halaman render).
+
+    Isi email ditarik HANYA kalau subjeknya berbau OTP (poller tidak boleh menarik
+    body semua email). Kode ditulis sebagai <code> supaya bisa disalin dengan satu tap.
+    """
+    if not OTP.mirip(subj):
+        return None
+    typ, d = M.uid('FETCH', uid, '(BODY.PEEK[])')
+    raw = b''.join(p[1] for p in d if isinstance(p, tuple))
+    if not raw or len(raw) > 600_000:          # email raksasa: bukan OTP
+        return None
+    msg = email.message_from_bytes(raw)
+    teks = htm = ''
+    for part in (msg.walk() if msg.is_multipart() else [msg]):
+        ct = part.get_content_type()
+        if ct == 'text/plain' and not teks:
+            try:
+                teks = part.get_payload(decode=True).decode(part.get_content_charset() or 'utf-8', 'replace')
+            except Exception:
+                pass
+        elif ct == 'text/html' and not htm:
+            try:
+                htm = part.get_payload(decode=True).decode(part.get_content_charset() or 'utf-8', 'replace')
+            except Exception:
+                pass
+    k = OTP.cari(subj, teks, htm)
+    if not k:
+        return None
+    print(f'  OTP {uid.decode()}: kode {len(k["kode"])} karakter ({k["sumber"]}, skor {k["skor"]})')
+    baris = f'    🔑 kode : <code>{E(k["kode"])}</code>'
+    catatan = []
+    if k.get('berlaku'):
+        catatan.append(f'berlaku ±{k["berlaku"]}')
+    if k.get('sumber') == 'subjek':
+        catatan.append('dari subjek')
+    if k.get('peringatan'):
+        catatan.append('jangan dibagikan')
+    if catatan:
+        baris += ' · ' + ' · '.join(catatan)
+    return baris
+
+
 def check(tag, label, send=True, folder='INBOX', unread=''):
     M = C.imap(tag, folder, readonly=True)
     addr = label.split(' · ')[0]          # alamat akun (label bisa dapat sufiks folder)
@@ -205,6 +249,12 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
                 f'    dari : {E(sname(m.get("From")))}',
                 f'    subj : {E(dec(m.get("Subject")) or "(tanpa subjek)")}',
                 f'    tgl  : {E(wib(m.get("Date")))}']
+            try:
+                _otp = otp_kartu(M, i, dec(m.get('Subject')))
+                if _otp:
+                    _baris.insert(3, _otp)          # tepat di bawah baris subjek
+            except Exception as e:
+                print('  otp err', type(e).__name__, str(e)[:70])
             if unread:
                 _baris.append(E(unread))
             _baris.append(f'    uid  : {E(i.decode())} · {len(ids)} pesan di {E(folder)}')

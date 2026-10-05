@@ -9,6 +9,15 @@ supervisor.py  ──┬── poller.py            loop: pantau IMAP, kirim kar
                  └── handler.py --minutes  loop: tarik update Telegram (getUpdates)
 ```
 
+Modul pendukung yang dipakai bersama:
+
+| Modul | Isi |
+| --- | --- |
+| `config.py` | satu sumber env/akun/URL untuk semua proses |
+| `otp.py` | pencari kode OTP di subjek + isi email (dipakai `poller.py` untuk baris 🔑 di kartu) |
+| `render.py` | mengubah satu email jadi halaman HTML aman (tanpa script, gambar & link diam) |
+| `unsub.py` | cari & pakai header `List-Unsubscribe` |
+
 `supervisor.py` memantau tiap 15 detik; kalau ada anak yang mati, dia dihidupkan lagi
 dengan jeda naik (5s, 10s, 15s, … maks 60s). Output kedua anak ditulis ke `STATE_DIR`
 (`poller.log`, `handler.log`) **sekaligus** ke stdout container, supaya bisa dibaca

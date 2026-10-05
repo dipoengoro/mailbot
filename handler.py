@@ -209,20 +209,24 @@ def edit_card(cq, status=None, acct=None):
     mid, txt = m.get('message_id'), m.get('text') or ''
     if not mid or not txt:
         return False
-    baru = txt
+    # Telegram mengembalikan teks kartu sebagai teks MENTAH (tanpa escape), sementara kita
+    # mengirimnya lagi dengan parse_mode=HTML -> wajib di-escape balik. Tanpa ini, kartu yang
+    # memuat '<' (mis. "Pinterest <recommendations@...>") ditolak Telegram dan status kartu
+    # hanya berubah lewat percobaan kedua tanpa parse_mode.
+    baru = E(txt)
     if status:
-        _s = '    status : ' + status
+        _s = '    status : ' + E(status)
         baru = (_rx.sub(r'^    status :.*$', lambda _m: _s, baru, flags=_rx.M)
                 if _rx.search(r'^    status :.*$', baru, _rx.M)
                 else baru.rstrip('\n') + '\n' + _s)   # kartu lama (belum ada baris status)
     if acct:
-        _l = sisa_baru(acct)
+        _l = E(sisa_baru(acct) or '')
         if _l:
             for _pola in (r'^    sisa :.*$', r'^    belum dibaca :.*$'):
                 if _rx.search(_pola, baru, _rx.M):
                     baru = _rx.sub(_pola, lambda _m: _l, baru, flags=_rx.M)
                     break
-    if baru == txt:
+    if baru == E(txt):
         return False
     p = {'chat_id': CHAT, 'message_id': mid, 'text': baru, 'parse_mode': 'HTML',
          'disable_web_page_preview': 'true'}
