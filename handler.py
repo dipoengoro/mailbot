@@ -68,10 +68,12 @@ def save(s):
 E, dec = C.E, C.dec        # helper yang sama dipakai poller/render (config.py)
 
 
-def say(t, kb=None, reply_to='auto'):
+def say(t, kb=None, reply_to='auto', kekal=False):
     """Kirim hasil aksi sebagai pesan biasa.
     reply_to='auto' -> ikut menempel (reply) ke kartu email yang sedang ditap,
-    supaya jelas hasil ini milik email yang mana. None = pesan lepas."""
+    supaya jelas hasil ini milik email yang mana. None = pesan lepas.
+    Pesan tanpa tombol = hasil aksi sementara: otomatis dihapus setelah
+    MAILBOT_TTL_AKSI detik. kekal=True untuk panduan/teks bantuan."""
     if C.FOOTER:               # penanda bot (MAILBOT_FOOTER), biar kebedain dari bot lain
         t = t + '\n\n' + C.FOOTER
     p = {'chat_id': CHAT, 'text': t, 'parse_mode': 'HTML', 'disable_web_page_preview': 'true'}
@@ -84,7 +86,76 @@ def say(t, kb=None, reply_to='auto'):
         p['allow_sending_without_reply'] = 'true'
     if kb:
         p['reply_markup'] = json.dumps(kb)
-    return api('sendMessage', **p)
+    res = api('sendMessage', **p)
+    if kb is None and not kekal:
+        try:
+            _catat_hapus((res.get('result') or {}).get('message_id'))
+        except Exception as e:
+            print('catat hapus err', type(e).__name__, str(e)[:60])
+    return res
+
+
+def _file_hapus():
+    return C.path('expire.json')
+
+
+def _baca_hapus():
+    try:
+        return json.load(open(_file_hapus())) or []
+    except Exception:
+        return []
+
+
+def _catat_hapus(mid):
+    """Simpan id pesan hasil aksi + waktu kedaluwarsanya.
+
+    File sendiri (`expire.json`), BUKAN di dalam state.json: handler juga menulis state.json
+    dari snapshot yang dimuat di awal satu putaran, jadi antrean hapus bisa ketimpa kalau
+    ditumpangkan di situ. Satu penulis saja (handler), jadi tidak perlu lock.
+    """
+    if not C.TTL_AKSI or not mid:
+        return
+    hd = _baca_hapus()
+    hd.append([int(mid), int(time.time()) + int(C.TTL_AKSI)])
+    with open(_file_hapus(), 'w') as f:
+        json.dump(hd[-300:], f)
+    os.chmod(_file_hapus(), 0o600)
+
+
+def sapu_pesan():
+    """Hapus pesan hasil aksi yang sudah lewat masa tampilnya (dipanggil handler tiap putaran).
+
+    Bot cuma bisa menghapus pesannya SENDIRI, dan hanya untuk pesan berumur < 48 jam.
+    Kalau batas itu sudah lewat, penjadwal menyerah (entri dibuang, tidak dicoba selamanya).
+    """
+    if not C.TTL_AKSI:
+        return 0
+    hd = _baca_hapus()
+    if not hd:
+        return 0
+    kini = time.time()
+    sisa, buang = [], 0
+    for mid, exp in hd:
+        if exp > kini:
+            sisa.append([mid, exp])
+            continue
+        if kini - exp > 3600:          # sudah terlalu lama, jangan dicoba terus
+            continue
+        try:
+            api('deleteMessage', chat_id=CHAT, message_id=mid)
+            buang += 1
+        except Exception as e:
+            t = str(e).lower()
+            if 'not found' in t or 'to delete' in t or 'message can' in t:
+                buang += 1             # sudah tidak ada / di luar batas 48 jam
+            else:
+                sisa.append([mid, exp])
+                print('sapu gagal', mid, str(e)[:80])
+    if len(sisa) != len(hd):
+        with open(_file_hapus(), 'w') as f:
+            json.dump(sisa, f)
+        os.chmod(_file_hapus(), 0o600)
+    return buang
 
 
 def detail(acct, uid):
@@ -339,7 +410,7 @@ def on_text(m):
         return 'daftar unsub dikirim'
     # --- /help, /bantuan, /start ---
     if cid in ALLOWED and txt.lower().split('@')[0].strip() in ('/help', '/bantuan', '/start'):
-        say(HELP_TEXT)
+        say(HELP_TEXT, kekal=True)
         return
     # --- compose: /tulis[@bot]  ke | subjek | isi [| akun-pengirim] ---
     if txt.lower().startswith('/tulis') and cid in ALLOWED:
@@ -348,7 +419,7 @@ def on_text(m):
         if not arg or arg.lower() in ('help', '?', 'bantuan'):
             say(HELP_TEXT if arg else '✍️ <b>tulis email baru</b>\n'
                 'format: <code>' + _tulis + ' ke@x.com | Subjek | isi email</code>\n'
-                'opsional di akhir: <code>| ' + _akun2 + '</code> — akun pengirim (default ' + _akun1 + ')')
+                'opsional di akhir: <code>| ' + _akun2 + '</code> — akun pengirim (default ' + _akun1 + ')', kekal=True)
             return
         f = [x.strip() for x in arg.split('|')]
         acct = NAMA_AKUN[0] if NAMA_AKUN else ''
@@ -705,6 +776,10 @@ if __name__ == '__main__':
         end = time.time() + mins * 60
         print(f'fase D aktif {mins} menit (lock dipegang)')
         while time.time() < end:
+            try:
+                sapu_pesan()
+            except Exception as e:
+                print('sapu err', type(e).__name__, str(e)[:90])
             try:
                 handle_once()
             except Exception as e:

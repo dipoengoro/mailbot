@@ -49,6 +49,7 @@ catatan di log — sengaja begitu supaya satu akun salah tidak mematikan semuany
 | --- | --- | --- | --- |
 | `MAILBOT_FOLDERS` | – | `INBOX,Newsletter,Notification,Spam,Archive,[Gmail]/Spam,[Gmail]/Penting` | folder yang dicari saat tombol aksi dipakai (UID unik per folder, jadi daftarnya dipakai untuk menemukan lokasi email) |
 | `MAILBOT_POLL_INTERVAL` | – | `180` | jeda antar siklus poller (detik) |
+| `MAILBOT_TTL_AKSI` | – | `600` | umur pesan **hasil aksi** sebelum dihapus bot sendiri (detik); `0` = nonaktif. Kartu email tidak pernah dihapus; pesan yang berumur > 48 jam tidak bisa dihapus bot (batas Telegram) |
 | `MAILBOT_MAX_HEAD_CACHE` | – | `400` | batas entri cache kepala email (untuk baris `dari/subj/tgl` di hasil tombol) |
 | `MAILBOT_MAX_MSGID_MEMORY` | – | `1200` | batas ingatan Message-ID untuk dedup lintas folder |
 

@@ -62,6 +62,12 @@ emailmu dan `api.telegram.org`.
 - Satu container berisi dua proses (poller + handler) yang dijaga supervisor (auto-restart),
   plus healthcheck berbasis heartbeat.
 - Zona waktu bisa diatur (`MAILBOT_TZ_OFFSET`), tanpa perlu tzdata.
+- Pesan **hasil aksi** (mis. `✅ sudah dibaca`, `📁 diarsipkan`, hasil 👁 Lihat) menghapus
+  dirinya sendiri setelah `MAILBOT_TTL_AKSI` detik (default 600 = 10 menit), jadi topik chat
+  tidak penuh jejak sementara. Kartu email **tidak** ikut dihapus karena tombol + link Lihat
+  ada di kartu itu. Catatan: bot hanya bisa menghapus pesannya sendiri, dan Telegram
+  membatasi penghapusan untuk pesan berumur < 48 jam.
+- Zona waktu bisa diatur (`MAILBOT_TZ_OFFSET`), tanpa perlu tzdata.
 
 ## Arsitektur
 

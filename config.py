@@ -86,6 +86,10 @@ POLL_INTERVAL = _num('MAILBOT_POLL_INTERVAL', 180)
 
 VIEW_TOKEN_BYTES = _num('MAILBOT_VIEW_TOKEN_BYTES', 8)   # 8 byte = 16 hex
 
+# Timer auto-hapus pesan HASIL AKSI (detik). 0 = matikan. Kartu email tidak pernah dihapus:
+# bot cuma bisa menghapus pesannya sendiri, dan kartu itu yang menyimpan link 🔗.
+TTL_AKSI = _num('MAILBOT_TTL_AKSI', 600)
+
 
 def path(nama):
     """Path file state/log di dalam STATE_DIR."""
