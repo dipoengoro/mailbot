@@ -67,6 +67,9 @@ emailmu dan `api.telegram.org`.
   bisa disalin dengan satu tap — tidak perlu membuka halaman Lihat. Deteksinya jalan lokal
   (tanpa layanan luar), hanya membaca isi email yang subjeknya berbau OTP, dan menolak angka
   yang bukan kode (nominal uang, nomor telepon, angka di dalam link, tahun).
+  Kodenya **disembunyikan sendiri** setelah `MAILBOT_TTL_OTP` detik (default 900 = 15 menit):
+  baris kode diganti keterangan kadaluarsa (kode di baris subjek ikut disamarkan), sedangkan
+  kartu dan tombolnya tetap utuh — kode tidak menggantung selamanya di riwayat chat.
 - Pesan **hasil aksi** (mis. `✅ sudah dibaca`, `📁 diarsipkan`, hasil 👁 Lihat) menghapus
   dirinya sendiri setelah `MAILBOT_TTL_AKSI` detik (default 600 = 10 menit), jadi topik chat
   tidak penuh jejak sementara. Kartu email **tidak** ikut dihapus karena tombol + link Lihat

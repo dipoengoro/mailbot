@@ -13,6 +13,7 @@ import email
 import imaplib
 import json
 import os
+import re
 import smtplib
 import ssl
 import sys
@@ -158,6 +159,107 @@ def sapu_pesan():
     return buang
 
 
+def _sembunyikan_kode(teks, kode):
+    """Buang kode dari teks kartu: baris 🔑 jadi keterangan kadaluarsa, kode di baris lain disamarkan.
+
+    Kode di kartu bisa muncul dua tempat: baris `🔑 kode : <code>...</code>` dan baris
+    `subj :` (pengirim seperti Netflix/beberapa bank menaruh kodenya di judul). Bentuk di
+    subjek bisa berbeda dari kode yang kita simpan (`761-810` vs `761810`), jadi penyamaran
+    pakai pola longgar: boleh ada pemisah spasi/tanda hubung di antara karakternya.
+    """
+    if not kode:
+        return teks
+    tutup = '•' * len(kode)
+    pola = ''.join(re.escape(ch) + r'[\s\-–]*' for ch in kode[:-1]) + re.escape(kode[-1])
+    teks = re.sub(r'^    🔑 kode :.*$', '    🔑 kode : (kadaluarsa — sudah disembunyikan)', teks, flags=re.M)
+    return re.sub(pola, tutup, teks)
+
+
+def sapu_otp():
+    """Samarkan kode OTP di kartu yang umurnya sudah lewat C.TTL_OTP (dipanggil tiap putaran).
+
+    Kartunya TIDAK dihapus, cuma teksnya diedit: tombol aksi & link 👁 Lihat tetap jalan.
+    Entri yang kartunya sudah tidak ada / di luar batas edit Telegram langsung dibuang.
+    """
+    if not C.TTL_OTP:
+        return 0
+    # Baca dulu tanpa lock: kalau belum ada yang jatuh tempo, jangan sentuh file sama sekali
+    # (sapu jalan tiap ~3 detik, menulis terus tanpa perlu itu mubazir).
+    try:
+        with open(C.path(C.FILE_OTP)) as f:
+            awal = json.load(f) or []
+    except Exception:
+        return 0
+    kini = time.time()
+    if not any(e.get('jatuh', 0) <= kini for e in awal):
+        return 0
+    buang = 0
+    jatuh_tempo = []
+
+    def _pilih(d):
+        for e in d:
+            if e.get('jatuh', 0) <= kini:
+                jatuh_tempo.append(e)
+            else:
+                yield e
+
+    try:
+        C.antrean_ubah(C.FILE_OTP, lambda d: list(_pilih(d)))
+    except Exception as e:
+        print('sapu otp err', type(e).__name__, str(e)[:80])
+        return 0
+
+    for e in jatuh_tempo:
+        mid = e.get('id')
+        teks = e.get('teks') or ''
+        try:
+            if not teks:
+                raise RuntimeError('tanpa teks kartu')
+            baru = _sembunyikan_kode(teks, e.get('kode'))
+            if baru == teks:
+                raise RuntimeError('teks tidak berubah')
+            p = {'chat_id': CHAT, 'message_id': mid, 'text': baru, 'parse_mode': 'HTML',
+                 'disable_web_page_preview': 'true'}
+            if e.get('markup'):
+                p['reply_markup'] = e['markup']
+            api('editMessageText', **p)
+            buang += 1
+            print('otp samar: kartu %s (uid %s) kode disembunyikan' % (mid, e.get('uid')))
+        except Exception as e2:
+            t = str(e2).lower()
+            if ('not found' in t or 'message can' in t or 'tanpa teks' in t
+                    or 'tidak berubah' in t or kini - e.get('jatuh', kini) > 3600):
+                buang += 1                     # tidak bisa/tidak perlu dicoba lagi
+            else:
+                print('otp samar gagal', mid, str(e2)[:90])
+                C.antrean_ubah(C.FILE_OTP, lambda d, e=e: d + [e])   # coba lagi nanti
+    return buang
+
+
+def _otp_perbarui(mid, teks, markup=None):
+    """Ikutkan perubahan teks kartu (mis. status berubah) ke antrean kode OTP.
+
+    Kalau tidak, saat menyamarkan kode nanti kartunya dikembalikan ke teks lama dan baris
+    `status` bisa berbalik jadi "belum dibaca" padahal sudah dibaca.
+    """
+    if not mid or not C.TTL_OTP:
+        return
+
+    def _ubah(d):
+        ada = False
+        for e in d:
+            if e.get('id') == mid:
+                e['teks'] = teks
+                if markup:
+                    e['markup'] = markup
+                ada = True
+        return d if ada else d
+    try:
+        C.antrean_ubah(C.FILE_OTP, _ubah)
+    except Exception:
+        pass
+
+
 def detail(acct, uid):
     """Baris detail email (dari / subj / tgl) buat hasil aksi tombol.
     Sumber pertama: cache kepala email yang ditulis poller (state_poller.json),
@@ -233,7 +335,10 @@ def edit_card(cq, status=None, acct=None):
     if m.get('reply_markup'):
         p['reply_markup'] = json.dumps(m['reply_markup'])
     try:
-        return bool(api('editMessageText', **p).get('ok'))
+        _ok = bool(api('editMessageText', **p).get('ok'))
+        if _ok:
+            _otp_perbarui(mid, baru, p.get('reply_markup'))
+        return _ok
     except Exception as e:
         print('edit kartu gagal', type(e).__name__, str(e)[:200])
         # Kartu lama bisa memuat '<' atau '&' mentah sehingga parse_mode HTML ditolak
@@ -639,18 +744,26 @@ def do(action, acct, uid):
             _M = C.imap(_t)
             # UID itu unik PER FOLDER: jangan asal STORE ke INBOX, nanti yang
             # ketandai email lain yang kebetulan punya uid sama.
+            _ada = False
             for _f in FOLDER_KANDIDAT:
                 try:
                     if _M.select(_f)[0] != 'OK':
                         continue
                     _x, _y = _M.uid('SEARCH', None, f'UID {uid}')
                     if _y and _y[0]:
+                        _ada = True
                         break
                 except Exception:
                     continue
-            _M.uid('STORE', uid, '+FLAGS', '(\\Seen)')
+            # Tanpa penjaga ini, uid yang sudah tidak ada (email dihapus/dipindah) membuat
+            # koneksi tidak berada di state SELECTED -> STORE ditolak
+            # "command STORE illegal in state AUTH, only allowed in states SELECTED".
+            if _ada:
+                _M.uid('STORE', uid, '+FLAGS', '(\\Seen)')
+                tandai = ' · ✓ ditandai sudah dibaca'
+            else:
+                tandai = ' · (email tidak ditemukan di mailbox)'
             _M.logout()
-            tandai = ' · ✓ ditandai sudah dibaca'
         except Exception as e:
             tandai = f' · (gagal menandai dibaca: {type(e).__name__})'
         # detail email ikut ditulis di pesan yang sama (biar jelas ini email yang mana)
@@ -660,15 +773,21 @@ def do(action, acct, uid):
         tag = ACC[acct]
         M = C.imap(tag)
         try:
+            _ada = False
             for _f in FOLDER_KANDIDAT:      # folder-awareness: email bisa dari Newsletter/Spam dll
                 try:
                     if M.select(_f)[0] != 'OK':
                         continue
                     _t, _d = M.uid('SEARCH', None, f'UID {uid}')
                     if _d and _d[0]:
+                        _ada = True
                         break
                 except Exception:
                     continue
+            if not _ada:
+                # kartu menunjuk email yang sudah tidak ada (dihapus/dipindah lewat aplikasi lain)
+                return (f'⚠️ email tidak ditemukan lagi di mailbox — {acct} uid {uid}\n'
+                        '    (mungkin sudah dihapus atau dipindah dari aplikasi lain)')
             if action == 'seen':
                 M.uid('STORE', uid, '+FLAGS', '(\\Seen)')
                 return f'✅ ditandai sudah dibaca — {acct} uid {uid}'
@@ -782,6 +901,7 @@ if __name__ == '__main__':
         while time.time() < end:
             try:
                 sapu_pesan()
+                sapu_otp()
             except Exception as e:
                 print('sapu err', type(e).__name__, str(e)[:90])
             try:

@@ -114,6 +114,9 @@ def unread_line(per, tot):
 E, dec, sname, jam, wib = C.E, C.dec, C.sname, C.jam, C.wib
 
 
+_TERAKHIR = {}          # payload sendMessage terakhir (text + reply_markup)
+
+
 def tg(text):
     import re as _re
     p = {'chat_id': C.TG_CHAT, 'text': text,
@@ -132,6 +135,8 @@ def tg(text):
              {'text': '🔇 Bisukan', 'callback_data': f'mute:{_acct}:{_uid}'}]]})
     if C.TG_THREAD:
         p['message_thread_id'] = C.TG_THREAD
+    _TERAKHIR.clear()
+    _TERAKHIR.update(p)
     req = urllib.request.Request(
         f"https://api.telegram.org/bot{C.TG_TOKEN}/sendMessage",
         data=urllib.parse.urlencode(p).encode())
@@ -166,6 +171,7 @@ def otp_kartu(M, uid, subj):
     Isi email ditarik HANYA kalau subjeknya berbau OTP (poller tidak boleh menarik
     body semua email). Kode ditulis sebagai <code> supaya bisa disalin dengan satu tap.
     """
+    otp_kartu.kode_terakhir = None
     if not OTP.mirip(subj):
         return None
     typ, d = M.uid('FETCH', uid, '(BODY.PEEK[])')
@@ -189,6 +195,7 @@ def otp_kartu(M, uid, subj):
     k = OTP.cari(subj, teks, htm)
     if not k:
         return None
+    otp_kartu.kode_terakhir = k
     print(f'  OTP {uid.decode()}: kode {len(k["kode"])} karakter ({k["sumber"]}, skor {k["skor"]})')
     baris = f'    🔑 kode : <code>{E(k["kode"])}</code>'
     catatan = []
@@ -201,6 +208,25 @@ def otp_kartu(M, uid, subj):
     if catatan:
         baris += ' · ' + ' · '.join(catatan)
     return baris
+
+
+def jadwalkan_otp(res, kode, tag, uid):
+    """Catat kartu berkode OTP: kodenya disamarkan setelah C.TTL_OTP detik.
+
+    Antrean ditulis ke file terpisah (`otp_mati.json`) lewat `C.antrean_ubah` karena
+    handler juga menulis file yang sama saat menyamarkan kode. Kartunya sendiri TIDAK
+    dihapus — cuma baris kodenya (dan kode di baris subjek) yang disembunyikan.
+    """
+    if not C.TTL_OTP:
+        return
+    mid = (res or {}).get('result', {}).get('message_id') if isinstance(res, dict) else None
+    if not mid:
+        return
+    entri = {'id': int(mid), 'akun': tag, 'uid': uid.decode(), 'kode': kode,
+             'jatuh': time.time() + C.TTL_OTP,
+             'teks': _TERAKHIR.get('text', ''), 'markup': _TERAKHIR.get('reply_markup')}
+    C.antrean_ubah(C.FILE_OTP, lambda d: (d + [entri])[-200:])
+    print('  otp jadwal: kartu %s, kode disamarkan dalam %d detik' % (mid, C.TTL_OTP))
 
 
 def check(tag, label, send=True, folder='INBOX', unread=''):
@@ -258,7 +284,13 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
             if unread:
                 _baris.append(E(unread))
             _baris.append(f'    uid  : {E(i.decode())} · {len(ids)} pesan di {E(folder)}')
-            tg('\n'.join(_baris))
+            _res = tg('\n'.join(_baris))
+            _k = getattr(otp_kartu, 'kode_terakhir', None)
+            if _k:
+                try:
+                    jadwalkan_otp(_res, _k['kode'], tag, i)
+                except Exception as e:
+                    print('  otp jadwal err', type(e).__name__, str(e)[:70])
             # Simpan kepala email di state supaya handler (tombol Lihat/Balas) bisa
             # menampilkan detail email tanpa fetch IMAP lagi.
             try:

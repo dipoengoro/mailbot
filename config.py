@@ -90,6 +90,14 @@ VIEW_TOKEN_BYTES = _num('MAILBOT_VIEW_TOKEN_BYTES', 8)   # 8 byte = 16 hex
 # bot cuma bisa menghapus pesannya sendiri, dan kartu itu yang menyimpan link 🔗.
 TTL_AKSI = _num('MAILBOT_TTL_AKSI', 600)
 
+# Timer penyamaran KODE OTP di kartu (detik). 0 = matikan (kode tetap tampil).
+# Bedanya dengan TTL_AKSI: yang hilang cuma baris kodenya, kartunya utuh.
+TTL_OTP = _num('MAILBOT_TTL_OTP', 900)
+
+# Antrean penyamaran kode OTP. Dua penulis (poller menambah, handler mengubah/menghapus),
+# jadi semua akses lewat `antrean_ubah` yang memakai lock file.
+FILE_OTP = 'otp_mati.json'
+
 
 def path(nama):
     """Path file state/log di dalam STATE_DIR."""
@@ -272,6 +280,32 @@ def baca_json(p, default=None):
             return json.load(f)
     except Exception:
         return {} if default is None else default
+
+
+def antrean_ubah(nama, ubah):
+    """Baca-ubah-tulis file antrean JSON dengan lock eksklusif.
+
+    Dipakai poller (menambah entri kode OTP) dan handler (menyamarkan kode lalu membuang
+    entri). Dua proses = dua penulis, jadi tanpa lock salah satu perubahan bisa hilang.
+    Tulis lewat file sementara + `os.replace` supaya pembaca tidak pernah melihat file separuh.
+    """
+    import fcntl
+    import json as _j
+    jalur = path(nama)
+    with open(jalur + '.lock', 'a+') as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            with open(jalur) as f:
+                data = _j.load(f) or []
+        except Exception:
+            data = []
+        hasil = ubah(data)
+        tmp = jalur + '.tmp'
+        with open(tmp, 'w') as f:
+            _j.dump(hasil, f)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, jalur)
+    return hasil
 
 
 def tulis_json(p, data, mode=0o600):
