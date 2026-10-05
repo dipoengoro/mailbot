@@ -265,6 +265,20 @@ def cari(subject, body=None, html=None, batas=1200):
     return keluar
 
 
+PREFIKS = re.compile(
+    r'(otp|kode|code|verif|login|masuk|passcode|pin|one[- ]time|2fa|mfa|auth|akses|token|'
+    r'sign[- ]?in|sekali pakai|keamanan|aktivasi)', re.I)
+
+
+def mirip(subject):
+    """Prefiks murah: subjeknya berbau OTP?
+
+    Dipakai poller sebelum menarik isi email — menarik body semua email itu mahal,
+    jadi hanya subjek yang mencurigakan yang dibaca isinya.
+    """
+    return bool(subject and PREFIKS.search(subject))
+
+
 def _kata_terdekat(t, pos):
     low = t.lower()
     terbaik, jarak = None, 10 ** 6
