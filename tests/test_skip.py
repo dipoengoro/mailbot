@@ -10,8 +10,8 @@ import tempfile
 AKAR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, AKAR)
 os.environ['MAILBOT_STATE_DIR'] = tempfile.mkdtemp(prefix='mailbot-uji-skip-')
-os.environ['MAILBOT_SKIP_FROM'] = r'zabbix-bcp@telkomsel\.co\.id'
-os.environ['MAILBOT_SKIP_SUBJECT'] = r'^BCP Production'
+os.environ['MAILBOT_SKIP_FROM'] = r'zabbix-bcp@telkomsel\.co\.id,mailer-daemon'
+os.environ['MAILBOT_SKIP_SUBJECT'] = r'^BCP Production,^Undelivered Mail Returned to Sender'
 
 import config as C  # noqa: E402
 import poller as P  # noqa: E402
@@ -27,6 +27,13 @@ KASUS = [
     ('Netflix <info@netflix.com>', 'Kode masukmu', False),
     ('Zabbix <zabbix@telkomsel.co.id>', 'BCP Production: tes dari pengirim lain', True),
     ('Budi <budi@example.com>', 'Rapat BCP Production bulan depan', False),
+    # bounce / undelivered (permintaan Dipo 7 Okt 2026)
+    ('Mail Delivery System <MAILER-DAEMON@mail.solusi247.com>',
+     'Undelivered Mail Returned to Sender', True),
+    ('Mail Delivery Subsystem <mailer-daemon@googlemail.com>',
+     'Delivery Status Notification (Failure)', True),
+    ('Mail Delivery System <MAILER-DAEMON@mail.solusi247.com>', 'Laporan lain', True),
+    ('Dipo <me@dipo.sh>', 'Re: Undelivered Mail Returned to Sender', False),
 ]
 
 
