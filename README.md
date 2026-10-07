@@ -62,6 +62,9 @@ emailmu dan `api.telegram.org`.
 - Satu container berisi dua proses (poller + handler) yang dijaga supervisor (auto-restart),
   plus healthcheck berbasis heartbeat.
 - Zona waktu bisa diatur (`MAILBOT_TZ_OFFSET`), tanpa perlu tzdata.
+- **Aturan exclude**: pengirim atau subjek yang berisik (alert mesin, notifikasi otomatis) bisa
+  didaftarkan di `MAILBOT_SKIP_FROM` / `MAILBOT_SKIP_SUBJECT` (regex) — kartunya tidak dikirim,
+  emailnya tetap di mailbox dan (opsional) langsung ditandai sudah dibaca.
 - **Kode OTP langsung di kartu**: email yang berisi kode verifikasi (Google, Telegram, bank,
   e-wallet, Netflix, AWS, sampai Authelia) dikenali, kodenya ditulis di kartu sebagai teks yang
   bisa disalin dengan satu tap — tidak perlu membuka halaman Lihat. Deteksinya jalan lokal

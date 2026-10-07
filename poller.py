@@ -210,6 +210,22 @@ def otp_kartu(M, uid, subj):
     return baris
 
 
+def lewati_email(pengirim, subjek):
+    """True kalau kartu untuk email ini TIDAK boleh dikirim (aturan exclude Dipo).
+
+    Dipakai untuk notifikasi mesin yang berisik (mis. alert Zabbix BCP). Email tetap di
+    mailbox — hanya tidak dikirimkan kartunya (dan opsional ditandai sudah dibaca).
+    """
+    teks = (pengirim or '') + '\n' + (subjek or '')
+    for rx in C.SKIP_FROM_RE:
+        if rx.search(pengirim or ''):
+            return 'pengirim %s' % rx.pattern
+    for rx in C.SKIP_SUBJECT_RE:
+        if rx.search(subjek or ''):
+            return 'subjek %s' % rx.pattern
+    return None
+
+
 def jadwalkan_otp(res, kode, tag, uid):
     """Catat kartu berkode OTP: kodenya disamarkan setelah C.TTL_OTP detik.
 
@@ -268,6 +284,16 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
         if _mid:
             _sudah.append(_mid)
             st['_seen_msgid'] = _sudah[-C.MAX_MSGID_MEMORY:]
+        _alasan = lewati_email(sname(m.get('From')), dec(m.get('Subject')))
+        if _alasan:
+            print('  dilewati (exclude: %s): %s' % (_alasan, (dec(m.get('Subject')) or '')[:46]))
+            if C.SKIP_TANDAI_BACA:
+                try:
+                    M.uid('STORE', i, '+FLAGS', '(\\Seen)')
+                except Exception as e:
+                    print('  gagal tandai dibaca:', type(e).__name__)
+            time.sleep(0.3)
+            continue
         if send:
             _baris = [
                 f'📥 <b>email baru</b> · {E(label)}',

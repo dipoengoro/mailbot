@@ -49,6 +49,9 @@ catatan di log — sengaja begitu supaya satu akun salah tidak mematikan semuany
 | --- | --- | --- | --- |
 | `MAILBOT_FOLDERS` | – | `INBOX,Newsletter,Notification,Spam,Archive,[Gmail]/Spam,[Gmail]/Penting` | folder yang dicari saat tombol aksi dipakai (UID unik per folder, jadi daftarnya dipakai untuk menemukan lokasi email) |
 | `MAILBOT_POLL_INTERVAL` | – | `180` | jeda antar siklus poller (detik) |
+| `MAILBOT_SKIP_FROM` | – | kosong | pola regex pengirim yang **tidak** dikirimkan kartunya (dipisah koma); email tetap ada di mailbox |
+| `MAILBOT_SKIP_SUBJECT` | – | kosong | pola regex subjek yang tidak dikirimkan kartunya |
+| `MAILBOT_SKIP_TANDAI_BACA` | – | `1` | email yang dilewati ditandai sudah dibaca (`0` = biarkan statusnya) |
 | `MAILBOT_TTL_AKSI` | – | `600` | umur pesan **hasil aksi** sebelum dihapus bot sendiri (detik); `0` = nonaktif. Kartu email tidak pernah dihapus; pesan yang berumur > 48 jam tidak bisa dihapus bot (batas Telegram) |
 | `MAILBOT_TTL_OTP` | – | `900` | umur **kode OTP** di kartu sebelum disembunyikan bot (detik); `0` = nonaktif. Hanya baris kode yang hilang (kartu, tombol, dan link 👁 Lihat tetap); kode yang muncul di baris subjek ikut disamarkan |
 | `MAILBOT_MAX_HEAD_CACHE` | – | `400` | batas entri cache kepala email (untuk baris `dari/subj/tgl` di hasil tombol) |

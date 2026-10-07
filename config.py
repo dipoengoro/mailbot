@@ -94,6 +94,37 @@ TTL_AKSI = _num('MAILBOT_TTL_AKSI', 600)
 # Bedanya dengan TTL_AKSI: yang hilang cuma baris kodenya, kartunya utuh.
 TTL_OTP = _num('MAILBOT_TTL_OTP', 900)
 
+# Aturan EXCLUDE notifikasi: kalau pengirim atau subjek cocok salah satu pola, kartu TIDAK dikirim
+# (email tetap ada di mailbox; tidak dihapus/dipindah). Dipisah koma atau titik-koma.
+#   MAILBOT_SKIP_FROM=zabbix-bcp@telkomsel\.co\.id
+#   MAILBOT_SKIP_SUBJECT=^BCP Production
+SKIP_FROM = get('MAILBOT_SKIP_FROM') or ''
+SKIP_SUBJECT = get('MAILBOT_SKIP_SUBJECT') or ''
+# Email yang dilewati ditandai sudah dibaca (biar ringkasan "belum dibaca" tidak menumpuk
+# oleh notifikasi mesin). 0 = biarkan statusnya apa adanya.
+SKIP_TANDAI_BACA = (get('MAILBOT_SKIP_TANDAI_BACA') or '1').strip().lower() not in ('0', 'false', 'no', 'off')
+
+
+def pola_lewati():
+    """Kompilasi daftar pola exclude -> (pola_pengirim, pola_subjek). Pola kosong = tidak ada aturan."""
+    import re as _re
+
+    def _kompil(teks):
+        hasil = []
+        for bagian in (teks or '').replace(';', ',').split(','):
+            bagian = bagian.strip()
+            if not bagian:
+                continue
+            try:
+                hasil.append(_re.compile(bagian, _re.I))
+            except Exception as e:
+                print('  pola exclude dilewati (%s): %s' % (type(e).__name__, bagian[:40]))
+        return hasil
+    return _kompil(SKIP_FROM), _kompil(SKIP_SUBJECT)
+
+
+SKIP_FROM_RE, SKIP_SUBJECT_RE = pola_lewati()
+
 # Antrean penyamaran kode OTP. Dua penulis (poller menambah, handler mengubah/menghapus),
 # jadi semua akses lewat `antrean_ubah` yang memakai lock file.
 FILE_OTP = 'otp_mati.json'
