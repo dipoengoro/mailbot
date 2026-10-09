@@ -264,6 +264,7 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
         M.logout()
         return 0, len(ids)
     _last = int(st.get(key, {}).get('last') or 0)   # watermark: kirim hanya uid yang lebih besar
+    _lewati_uids = []                                # uid yang kena aturan exclude (ditandai baca nanti)
     n = 0
     st[key] = {'seen': [x.decode() for x in ids[-400:]], 'last': ids[-1].decode()}
     save(st)
@@ -288,10 +289,7 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
         if _alasan:
             print('  dilewati (exclude: %s): %s' % (_alasan, (dec(m.get('Subject')) or '')[:46]))
             if C.SKIP_TANDAI_BACA:
-                try:
-                    M.uid('STORE', i, '+FLAGS', '(\\Seen)')
-                except Exception as e:
-                    print('  gagal tandai dibaca:', type(e).__name__)
+                _lewati_uids.append(i)      # ditandai baca SESUDAH loop (koneksi ini readonly)
             time.sleep(0.3)
             continue
         if send:
@@ -336,6 +334,31 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
     st[key] = {'seen': [i.decode() for i in ids[-400:]], 'last': ids[-1].decode()}
     save(st)
     M.logout()
+
+    # Tandai "sudah dibaca" email yang dilewati aturan exclude. Koneksi di atas dibuka READ-ONLY
+    # (biar status unread email lain tidak berubah), jadi STORE di situ ditolak
+    # ("STORE failure: this folder is opened Read-Only") -> pakai koneksi kedua, sekali per folder.
+    if _lewati_uids:
+        try:
+            M2 = C.imap(tag)
+            if M2.select(folder, readonly=False)[0] == 'OK':
+                # Kirim per potongan kecil: satu STORE dengan ratusan uid ditolak server kantor
+                # (terlihat 'OK' tapi flag tidak berubah), 40 uid per perintah terbukti jalan.
+                _ok = 0
+                for _i in range(0, len(_lewati_uids), 40):
+                    _potong = _lewati_uids[_i:_i + 40]
+                    try:
+                        if M2.uid('STORE', b','.join(_potong), '+FLAGS', '(\\Seen)')[0] == 'OK':
+                            _ok += len(_potong)
+                        else:
+                            print('  STORE ditolak untuk %d uid' % len(_potong))
+                    except Exception as _e:
+                        print('  STORE galat (%d uid): %s' % (len(_potong), type(_e).__name__))
+                print('  %d/%d email dilewati ditandai sudah dibaca (%s)'
+                      % (_ok, len(_lewati_uids), folder))
+            M2.logout()
+        except Exception as e:
+            print('  gagal tandai dibaca (exclude):', type(e).__name__, str(e)[:60])
     return n, len(ids)
 
 
@@ -382,7 +405,7 @@ if __name__ == '__main__':
                     _Mx.logout()
                     print('  folder', _l, ':', len(_FOLDERS[_t]), '|', _UNREAD[_t].strip() or 'belum dibaca: ?')
                 except Exception as e:
-                    print('  folder err', _t, type(e).__name__)
+                    print('  folder err', _t, type(e).__name__, str(e)[:90])
                     _FOLDERS[_t] = ['INBOX']
                     _UNREAD[_t] = ''
             for t, l in ACCTS:
