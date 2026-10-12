@@ -24,6 +24,13 @@ HARUS_KETEMU = [
      '&#52;&#55;&#49;&#57;</td></tr><tr><td>Berlaku 15 menit.</td></tr></table>', '4719'),
     ('Login Udemy: Berikut kode verifikasi 6 digit', 'Gunakan kode di bawah ini untuk login. 831450Kode ini akan kedaluwarsa dalam 10 menit.', None, '831450'),
     ('Verifikasi alamat email ID AWS Builder', 'Kode verifikasi: 244681\n\nKode ini akan kedaluwarsa 30 menit setelah dikirim.', None, '244681'),
+    # Google: subjeknya TIDAK memuat kata kode/verifikasi sama sekali -> dulu lolos dari
+    # saringan PREFIKS alias tidak pernah jadi kartu OTP (email nyata 12 Okt 2026).
+    ('Gunakan 587161 untuk menyiapkan email pemulihan',
+     'Google\r\nVerifikasi email pemulihan\r\n\r\ndipoengoro@gmail.com ingin menggunakan alamat email '
+     'Anda sebagai email pemulihannya. Gunakan kode ini untuk menyelesaikan penyiapan juhyuko@gmail.com '
+     'sebagai email pemulihan:\r\n\r\n587161\r\n\r\nMasa berlaku kode ini akan berakhir dalam 24 jam.\r\n',
+     None, '587161'),
 ]
 
 # Email yang mirip OTP (kata kuncinya ada) tapi TIDAK boleh memunculkan kode.
@@ -40,6 +47,12 @@ TIDAK_BOLEH_KETEMU = [
 
 def main():
     gagal = 0
+    # Saringan murah di poller (mirip) harus meloloskan SEMUA subjek OTP nyata; kalau tidak,
+    # kodenya tidak pernah diekstrak walau polanya benar (kasus Google 12 Okt 2026).
+    for subj, teks, html, mau in HARUS_KETEMU:
+        if not otp.mirip(subj):
+            gagal += 1
+            print('GAGAL  saringan mirip() menolak subjek OTP: %r' % subj[:60])
     for subj, teks, html, mau in HARUS_KETEMU:
         hasil = otp.cari(subj, teks, html)
         dapat = (hasil or {}).get('kode')

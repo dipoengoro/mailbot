@@ -267,7 +267,10 @@ def cari(subject, body=None, html=None, batas=1200):
 
 PREFIKS = re.compile(
     r'(otp|kode|code|verif|login|masuk|passcode|pin|one[- ]time|2fa|mfa|auth|akses|token|'
-    r'sign[- ]?in|sekali pakai|keamanan|aktivasi)', re.I)
+    r'sign[- ]?in|sekali pakai|keamanan|aktivasi|'
+    # Google memakai subjek seperti "Gunakan 587161 untuk menyiapkan email pemulihan":
+    # tidak ada kata kode/verifikasi sama sekali, jadi pola ini yang menangkapnya.
+    r'recovery|pemulihan|gunakan\s+\d{4,8}\b)', re.I)
 
 
 def mirip(subject):
