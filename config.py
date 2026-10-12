@@ -205,7 +205,9 @@ def imap(tag, folder=None, readonly=True):
     """Koneksi IMAP siap pakai. folder=None -> belum ada kotak yang dipilih."""
     import imaplib
     a = A[tag]
-    M = imaplib.IMAP4_SSL(a['host'], a['imap_port'])
+    # timeout WAJIB: tanpa ini koneksi IMAP yang putus separuh membuat poller menggantung
+    # selamanya (kejadian 10 Okt 2026: macet 1,5 hari di server kantor, tanpa traceback).
+    M = imaplib.IMAP4_SSL(a['host'], a['imap_port'], timeout=60)
     M.login(a['user'], a['pass'])
     if folder:
         M.select(folder, readonly=readonly)

@@ -19,6 +19,10 @@ import urllib.request
 from email.mime.text import MIMEText
 from email.utils import formatdate, make_msgid
 
+import socket
+
+socket.setdefaulttimeout(60)   # jaring pengaman: socket apa pun di poller tidak menggantung selamanya
+
 import config as C
 import otp as OTP
 
@@ -122,9 +126,9 @@ def tg(text):
     p = {'chat_id': C.TG_CHAT, 'text': text,
          'parse_mode': 'HTML', 'disable_web_page_preview': 'true'}
     # Tombol aksi — bridge: poller & handler masih proses terpisah (nanti digabung di deployment).
-    _a = _re.search(r'email baru</b>[^\n]*?([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+)', text) \
-        or _re.search(r'([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})', text)
-    _u = _re.search(r'uid\s*:\s*(\d+)', text)
+    _a = re.search(r'email baru</b>[^\n]*?([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+)', text) \
+        or re.search(r'([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})', text)
+    _u = re.search(r'uid\s*:\s*(\d+)', text)
     if _a and _u:
         _acct, _uid = _a.group(1), _u.group(1)
         p['reply_markup'] = json.dumps({'inline_keyboard': [
@@ -359,6 +363,51 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
             M2.logout()
         except Exception as e:
             print('  gagal tandai dibaca (exclude):', type(e).__name__, str(e)[:60])
+    # Penyapu: email LAMA yang kena aturan exclude tapi masih "belum dibaca" — sisa dari
+    # gangguan sebelumnya atau penandaan yang gagal senyap. Dijalankan tiap siklus (maks 40 uid,
+    # satu FETCH borongan) supaya angka unread tidak pernah menumpuk tanpa terlihat.
+    # Yang disentuh hanya pengirim/subjek yang memang sudah masuk daftar bisukan.
+    _sapu, _un = 0, []
+    try:
+        M3 = C.imap(tag)
+        if M3.select(folder, readonly=False)[0] == 'OK':
+            _t, _d = M3.uid('SEARCH', None, 'UNSEEN')
+            _un = list(_d[0].split()) if (_d and _d[0]) else []
+            if _un:
+                _t, _h = M3.uid('FETCH', b','.join(_un[:40]),
+                                '(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])')
+                _uid_skr, _kena = None, []
+                for _x in _h:
+                    # imaplib mengembalikan (prefix, isi) untuk BODY[...]: uid ada di prefix.
+                    if isinstance(_x, tuple):
+                        _pref = _x[0] if isinstance(_x[0], bytes) else b''
+                        _m = re.search(rb'UID (\d+)', _pref)
+                        if _m:
+                            _uid_skr = _m.group(1)
+                        _raw = (_x[1] or b'').decode('utf-8', 'replace')
+                        _dari = re.search(r'(?im)^from:\s*(.*)$', _raw)
+                        _subj = re.search(r'(?im)^subject:\s*(.*)$', _raw)
+                        if _uid_skr and lewati_email(_dari.group(1) if _dari else '',
+                                                     _subj.group(1) if _subj else ''):
+                            _kena.append(_uid_skr)
+                    elif isinstance(_x, bytes):
+                        _m = re.search(rb'UID (\d+)', _x)
+                        if _m:
+                            _uid_skr = _m.group(1)
+                for _i in range(0, len(_kena), 40):
+                    try:
+                        if M3.uid('STORE', b','.join(_kena[_i:_i + 40]), '+FLAGS', '(\\Seen)')[0] == 'OK':
+                            _sapu += len(_kena[_i:_i + 40])
+                    except Exception:
+                        pass
+            M3.logout()
+    except Exception as e:
+        print('  sapu gagal:', type(e).__name__, str(e)[:60])
+    if _sapu:
+        print('  sapu: %d email kena aturan ditandai sudah dibaca (%s)' % (_sapu, folder))
+    if len(_un) > 40:
+        print('  sapu: %d belum dibaca lain menunggu siklus berikutnya (%s)' % (len(_un) - 40, folder))
+
     return n, len(ids)
 
 
