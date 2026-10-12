@@ -297,7 +297,7 @@ def sisa_baru(acct):
         tag = ACC[acct]
         M = C.imap(tag)
         baris = p.unread_line(*p.unread_of(M, p.folders_of(M)))
-        M.logout()
+        C.tutup(M)
         return baris
     except Exception:
         return None
@@ -369,7 +369,7 @@ def head(acct, uid):
             continue
     t, d = M.uid('FETCH', uid, '(BODY.PEEK[HEADER])')
     raw = b''.join(x[1] for x in d if isinstance(x, tuple))
-    M.logout()
+    C.tutup(M)
     return email.message_from_bytes(raw)
 
 
@@ -763,7 +763,7 @@ def do(action, acct, uid):
                 tandai = ' · ✓ ditandai sudah dibaca'
             else:
                 tandai = ' · (email tidak ditemukan di mailbox)'
-            _M.logout()
+            C.tutup(_M)
         except Exception as e:
             tandai = f' · (gagal menandai dibaca: {type(e).__name__})'
         # detail email ikut ditulis di pesan yang sama (biar jelas ini email yang mana)
@@ -820,7 +820,7 @@ def do(action, acct, uid):
             return f'📁 diarsipkan ke "{dest}" — {acct} uid {uid}'
         finally:
             try:
-                M.logout()
+                C.tutup(M)
             except Exception:
                 pass
     if action == 'cxl':

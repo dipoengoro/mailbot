@@ -249,6 +249,9 @@ def jadwalkan_otp(res, kode, tag, uid):
     print('  otp jadwal: kartu %s, kode disamarkan dalam %d detik' % (mid, C.TTL_OTP))
 
 
+_SIKLUS_FOLDER = 0      # penghitung siklus folder; penyapu jalan tiap 3 siklus
+
+
 def check(tag, label, send=True, folder='INBOX', unread=''):
     M = C.imap(tag, folder, readonly=True)
     addr = label.split(' · ')[0]          # alamat akun (label bisa dapat sufiks folder)
@@ -260,12 +263,12 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
     st = load()
     key = f'{tag}:{folder}:{uidv}'
     if not ids:
-        M.logout()
+        C.tutup(M)
         return 0, 0
     if st.get(key, {}).get('last') is None:      # baseline pertama: tandai, jangan spam
         st[key] = {'seen': [i.decode() for i in ids[-400:]], 'last': ids[-1].decode()}
         save(st)
-        M.logout()
+        C.tutup(M)
         return 0, len(ids)
     _last = int(st.get(key, {}).get('last') or 0)   # watermark: kirim hanya uid yang lebih besar
     _lewati_uids = []                                # uid yang kena aturan exclude (ditandai baca nanti)
@@ -337,76 +340,76 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
         n += 1
     st[key] = {'seen': [i.decode() for i in ids[-400:]], 'last': ids[-1].decode()}
     save(st)
-    M.logout()
+    C.tutup(M)
 
-    # Tandai "sudah dibaca" email yang dilewati aturan exclude. Koneksi di atas dibuka READ-ONLY
-    # (biar status unread email lain tidak berubah), jadi STORE di situ ditolak
-    # ("STORE failure: this folder is opened Read-Only") -> pakai koneksi kedua, sekali per folder.
-    if _lewati_uids:
+    # Tindak lanjut sesudah siklus folder — SATU koneksi read-write untuk dua pekerjaan:
+    #   a) tandai "sudah dibaca" email yang dilewati aturan exclude pada siklus ini;
+    #   b) penyapu: email LAMA yang kena aturan tapi masih belum dibaca (sisa gangguan lama atau
+    #      STORE yang gagal senyap). Penyapu jalan tiap 3 siklus supaya tidak menambah beban login.
+    # Koneksi utama di atas READ-ONLY dan server kantor menolak STORE di situ, jadi butuh koneksi
+    # kedua — tapi cukup SATU per folder, bukan dua seperti sebelumnya: server kantor membatasi
+    # sesi, dan login berlebihan membuat handshake-nya timeout (lihat err S247 di log).
+    global _SIKLUS_FOLDER
+    _SIKLUS_FOLDER += 1
+    _perlu_sapu = (_SIKLUS_FOLDER % 3 == 0)
+    if _lewati_uids or _perlu_sapu:
         try:
             M2 = C.imap(tag)
             if M2.select(folder, readonly=False)[0] == 'OK':
-                # Kirim per potongan kecil: satu STORE dengan ratusan uid ditolak server kantor
-                # (terlihat 'OK' tapi flag tidak berubah), 40 uid per perintah terbukti jalan.
-                _ok = 0
-                for _i in range(0, len(_lewati_uids), 40):
-                    _potong = _lewati_uids[_i:_i + 40]
-                    try:
-                        if M2.uid('STORE', b','.join(_potong), '+FLAGS', '(\\Seen)')[0] == 'OK':
-                            _ok += len(_potong)
-                        else:
-                            print('  STORE ditolak untuk %d uid' % len(_potong))
-                    except Exception as _e:
-                        print('  STORE galat (%d uid): %s' % (len(_potong), type(_e).__name__))
-                print('  %d/%d email dilewati ditandai sudah dibaca (%s)'
-                      % (_ok, len(_lewati_uids), folder))
-            M2.logout()
+                if _lewati_uids:
+                    # Kirim per potongan kecil: satu STORE dengan ratusan uid ditolak server kantor
+                    # (terlihat 'OK' tapi flag tidak berubah), 40 uid per perintah terbukti jalan.
+                    _ok = 0
+                    for _i in range(0, len(_lewati_uids), 40):
+                        _potong = _lewati_uids[_i:_i + 40]
+                        try:
+                            if M2.uid('STORE', b','.join(_potong), '+FLAGS', '(\\Seen)')[0] == 'OK':
+                                _ok += len(_potong)
+                            else:
+                                print('  STORE ditolak untuk %d uid' % len(_potong))
+                        except Exception as _e:
+                            print('  STORE galat (%d uid): %s' % (len(_potong), type(_e).__name__))
+                    print('  %d/%d email dilewati ditandai sudah dibaca (%s)'
+                          % (_ok, len(_lewati_uids), folder))
+                if _perlu_sapu:
+                    _sapu, _sisa = 0, 0
+                    _t, _d = M2.uid('SEARCH', None, 'UNSEEN')
+                    _un = list(_d[0].split()) if (_d and _d[0]) else []
+                    if _un:
+                        _t, _h = M2.uid('FETCH', b','.join(_un[:40]),
+                                        '(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])')
+                        _uid_skr, _kena = None, []
+                        for _x in _h:
+                            # imaplib mengembalikan (prefix, isi) untuk BODY[...]: uid ada di prefix.
+                            if isinstance(_x, tuple):
+                                _pref = _x[0] if isinstance(_x[0], bytes) else b''
+                                _m = re.search(rb'UID (\d+)', _pref)
+                                if _m:
+                                    _uid_skr = _m.group(1)
+                                _raw = (_x[1] or b'').decode('utf-8', 'replace')
+                                _dari = re.search(r'(?im)^from:\s*(.*)$', _raw)
+                                _subj = re.search(r'(?im)^subject:\s*(.*)$', _raw)
+                                if _uid_skr and lewati_email(_dari.group(1) if _dari else '',
+                                                             _subj.group(1) if _subj else ''):
+                                    _kena.append(_uid_skr)
+                            elif isinstance(_x, bytes):
+                                _m = re.search(rb'UID (\d+)', _x)
+                                if _m:
+                                    _uid_skr = _m.group(1)
+                        for _i in range(0, len(_kena), 40):
+                            try:
+                                if M2.uid('STORE', b','.join(_kena[_i:_i + 40]),
+                                          '+FLAGS', '(\\Seen)')[0] == 'OK':
+                                    _sapu += len(_kena[_i:_i + 40])
+                            except Exception:
+                                pass
+                        _sisa = max(0, len(_un) - 40)
+                    if _sapu or _sisa:
+                        print('  sapu: %d email kena aturan ditandai sudah dibaca (%s)%s'
+                              % (_sapu, folder, (' · %d menunggu siklus berikutnya' % _sisa) if _sisa else ''))
+            C.tutup(M2)
         except Exception as e:
-            print('  gagal tandai dibaca (exclude):', type(e).__name__, str(e)[:60])
-    # Penyapu: email LAMA yang kena aturan exclude tapi masih "belum dibaca" — sisa dari
-    # gangguan sebelumnya atau penandaan yang gagal senyap. Dijalankan tiap siklus (maks 40 uid,
-    # satu FETCH borongan) supaya angka unread tidak pernah menumpuk tanpa terlihat.
-    # Yang disentuh hanya pengirim/subjek yang memang sudah masuk daftar bisukan.
-    _sapu, _un = 0, []
-    try:
-        M3 = C.imap(tag)
-        if M3.select(folder, readonly=False)[0] == 'OK':
-            _t, _d = M3.uid('SEARCH', None, 'UNSEEN')
-            _un = list(_d[0].split()) if (_d and _d[0]) else []
-            if _un:
-                _t, _h = M3.uid('FETCH', b','.join(_un[:40]),
-                                '(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])')
-                _uid_skr, _kena = None, []
-                for _x in _h:
-                    # imaplib mengembalikan (prefix, isi) untuk BODY[...]: uid ada di prefix.
-                    if isinstance(_x, tuple):
-                        _pref = _x[0] if isinstance(_x[0], bytes) else b''
-                        _m = re.search(rb'UID (\d+)', _pref)
-                        if _m:
-                            _uid_skr = _m.group(1)
-                        _raw = (_x[1] or b'').decode('utf-8', 'replace')
-                        _dari = re.search(r'(?im)^from:\s*(.*)$', _raw)
-                        _subj = re.search(r'(?im)^subject:\s*(.*)$', _raw)
-                        if _uid_skr and lewati_email(_dari.group(1) if _dari else '',
-                                                     _subj.group(1) if _subj else ''):
-                            _kena.append(_uid_skr)
-                    elif isinstance(_x, bytes):
-                        _m = re.search(rb'UID (\d+)', _x)
-                        if _m:
-                            _uid_skr = _m.group(1)
-                for _i in range(0, len(_kena), 40):
-                    try:
-                        if M3.uid('STORE', b','.join(_kena[_i:_i + 40]), '+FLAGS', '(\\Seen)')[0] == 'OK':
-                            _sapu += len(_kena[_i:_i + 40])
-                    except Exception:
-                        pass
-            M3.logout()
-    except Exception as e:
-        print('  sapu gagal:', type(e).__name__, str(e)[:60])
-    if _sapu:
-        print('  sapu: %d email kena aturan ditandai sudah dibaca (%s)' % (_sapu, folder))
-    if len(_un) > 40:
-        print('  sapu: %d belum dibaca lain menunggu siklus berikutnya (%s)' % (len(_un) - 40, folder))
+            print('  gagal tandai dibaca/penyapu (%s):' % folder, type(e).__name__, str(e)[:60])
 
     return n, len(ids)
 
@@ -436,7 +439,7 @@ if __name__ == '__main__':
                 _Mx = C.imap(t)
                 _F = folders_of(_Mx)
                 _U = unread_line(*unread_of(_Mx, _F))
-                _Mx.logout()
+                C.tutup(_Mx)
                 for _f in _F:
                     n, tot = check(t, l, folder=_f, unread=_U)
                 print(f'{l}: baru {n} | total {tot} | {_U.strip()}')
@@ -451,7 +454,7 @@ if __name__ == '__main__':
                     _Mx = C.imap(_t)
                     _FOLDERS[_t] = folders_of(_Mx)
                     _UNREAD[_t] = unread_line(*unread_of(_Mx, _FOLDERS[_t]))
-                    _Mx.logout()
+                    C.tutup(_Mx)
                     print('  folder', _l, ':', len(_FOLDERS[_t]), '|', _UNREAD[_t].strip() or 'belum dibaca: ?')
                 except Exception as e:
                     print('  folder err', _t, type(e).__name__, str(e)[:90])

@@ -201,17 +201,50 @@ SMTP = {a['tag']: (a['smtp_host'], a['smtp_port']) for a in ACCOUNTS}
 ACCTS = [(a['tag'], a['email']) for a in ACCOUNTS]       # urutan pemrosesan poller
 
 
-def imap(tag, folder=None, readonly=True):
-    """Koneksi IMAP siap pakai. folder=None -> belum ada kotak yang dipilih."""
+def tutup(M):
+    """Logout yang tidak boleh menjatuhkan program.
+
+    Server kantor kadang tidak menjawab LOGOUT sama sekali; dengan timeout socket yang baru,
+    panggilan itu melempar TimeoutError dan (dulu) menggagalkan seluruh render/aksi tombol.
+    Di sini timeout dipendekkan ke 5 detik, gagal pun hanya menutup soket paksa.
+    """
+    try:
+        M.sock.settimeout(5)
+    except Exception:
+        pass
+    try:
+        M.logout()
+    except Exception:
+        try:
+            M.shutdown()
+        except Exception:
+            pass
+
+
+def imap(tag, folder=None, readonly=True, timeout=60, coba=2):
+    """Koneksi IMAP siap pakai. folder=None -> belum ada kotak yang dipilih.
+
+    `timeout` dan `coba` bisa dikecilkan untuk jalur interaktif (tombol Lihat) supaya
+    kegagalan tidak menggantung lama.
+    """
     import imaplib
+    import time as _t
     a = A[tag]
-    # timeout WAJIB: tanpa ini koneksi IMAP yang putus separuh membuat poller menggantung
-    # selamanya (kejadian 10 Okt 2026: macet 1,5 hari di server kantor, tanpa traceback).
-    M = imaplib.IMAP4_SSL(a['host'], a['imap_port'], timeout=60)
-    M.login(a['user'], a['pass'])
-    if folder:
-        M.select(folder, readonly=readonly)
-    return M
+    for _ke in range(1, max(1, coba) + 1):
+        try:
+            # timeout WAJIB: tanpa ini koneksi IMAP yang putus separuh membuat poller menggantung
+            # selamanya (kejadian 10 Okt 2026: macet 1,5 hari di server kantor, tanpa traceback).
+            M = imaplib.IMAP4_SSL(a['host'], a['imap_port'], timeout=timeout)
+            M.login(a['user'], a['pass'])
+            if folder:
+                M.select(folder, readonly=readonly)
+            return M
+        except Exception:
+            # jalur kantor (lewat Tailscale) sempat menolak handshake pertama; sekali ulang
+            # membuat satu koneksi sial tidak lagi membuang satu siklus penuh.
+            if _ke == max(1, coba):
+                raise
+            _t.sleep(3)
 
 
 def smtp(tag):

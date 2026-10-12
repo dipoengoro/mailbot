@@ -10,6 +10,7 @@ import email
 import os
 import re
 import sys
+import time
 
 import config as C
 
@@ -56,7 +57,13 @@ if not tag:
     print('akun tidak dikenal:', acct, '-> daftarnya di MAILBOT_ACCOUNTS')
     raise SystemExit(3)
 
-M = C.imap(tag)
+# timeout pendek + sekali ulang (di dalam C.imap): tombol Lihat harus menjawab cepat,
+# tapi tetap tahan terhadap handshake pertama yang ditolak server kantor.
+try:
+    M = C.imap(tag, timeout=20)
+except Exception as _e:
+    print('gagal konek IMAP ke %s: %s: %s' % (acct, type(_e).__name__, str(_e)[:70]))
+    raise SystemExit(4)
 KANDIDAT = C.FOLDERS
 folder = g('--folder', '')
 cari = [folder] if folder else KANDIDAT
@@ -75,7 +82,7 @@ if not ketemu:
     print(f'uid {uid} tidak ketemu di folder yang dipantau: {cari}')
     raise SystemExit(2)
 t, d = M.uid('FETCH', uid, '(RFC822)')
-M.logout()
+C.tutup(M)
 msg = email.message_from_bytes(d[0][1])
 
 html = text = ''
