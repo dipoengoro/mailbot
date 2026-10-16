@@ -73,6 +73,23 @@ def tulis(baris):
         f.write(baris + '\n')
 
 
+def peta_akun():
+    """accountId arsip -> tag bot. Dipetakan lewat alamat email akun (pendaftaran arsip)."""
+    try:
+        d = ambil('/api/v1/accounts')
+    except Exception:
+        return {}
+    item = d.get('items') if isinstance(d, dict) else d
+    peta = {}
+    for a in (item or []):
+        if not isinstance(a, dict):
+            continue
+        em = (a.get('emailAddress') or a.get('email') or '').strip().lower()
+        if a.get('id') and em:
+            peta[a['id']] = C.EMAIL_TO_TAG.get(em) or em.split('@')[0]
+    return peta
+
+
 def isi_email(eid):
     """Ambil textBody/htmlBody dari endpoint detail. None kalau gagal."""
     try:
@@ -132,11 +149,12 @@ def jalan(mulai_sekarang=False):
     st['last_id'] = max(st['last_id'], max(i['id'] for i in baru))
 
     masuk = [i for i in baru if not i.get('isOutgoing')]
+    peta = peta_akun()
     per_tag, lag = {}, []
     for i in masuk:
-        tag = C.EMAIL_TO_TAG.get((i.get('to') or '').lower())
-        if not tag:
-            tag = C.EMAIL_TO_TAG.get((i.get('from') or '').lower()) or '?'
+        tag = (peta.get(i.get('accountId'))
+               or C.EMAIL_TO_TAG.get((i.get('to') or '').lower())
+               or C.EMAIL_TO_TAG.get((i.get('from') or '').lower()) or '?')
         per_tag[tag] = per_tag.get(tag, 0) + 1
         try:
             kirim = datetime.fromisoformat((i.get('sentDate') or '').split('.')[0])
