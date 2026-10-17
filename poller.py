@@ -316,6 +316,16 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
                 _baris.append(E(unread))
             _baris.append(f'    uid  : {E(i.decode())} · {len(ids)} pesan di {E(folder)}')
             _res = tg('\n'.join(_baris))
+            # Jejak kartu terkirim — dipakai pembanding otomatis dengan arsip MailArchiver
+            # (Fase 1 "satu sumber"). Hanya MENCATAT, tidak mengubah perilaku apa pun.
+            try:
+                _skg = time.strftime('%Y-%m-%d %H:%M:%S',
+                                     time.localtime(time.time() + C.TZ_OFFSET * 3600))
+                with open(C.path('kartu.log'), 'a') as _fk:
+                    _fk.write('%s | kartu | tag=%s | %s | %s\n' % (
+                        _skg, tag, i.decode(), (dec(m.get('Subject')) or '(tanpa subjek)')[:80]))
+            except Exception:
+                pass
             _k = getattr(otp_kartu, 'kode_terakhir', None)
             if _k:
                 try:
