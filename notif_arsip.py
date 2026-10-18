@@ -150,9 +150,11 @@ def jalan(mulai_sekarang=False):
             d = O.cari(subj, body=i.get('teks') or '', html=i.get('html') or '')
             if d:
                 baris.insert(3, '    🔑 kode : %s' % C.E(d.get('kode')))
+        # Baris "arsip tidak menyimpan status baca" dibuang: status baca sekarang
+        # disimpan hub (tabel mail.message_status), bukan di arsip. Menuliskan
+        # keterbatasan arsip di kartu cuma bikin bingung.
         baris += ['    folder : %s' % C.E(folder or '?'),
                   '    lag  : %s (arsip → terlihat)' % lag_s,
-                  '    status : arsip tidak menyimpan status baca',
                   '    arsip : id %s' % i['id']]
         try:
             # Tombol memakai id arsip; handler menerjemahkannya ke (akun, uid) lewat
