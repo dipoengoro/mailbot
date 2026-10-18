@@ -135,7 +135,15 @@ def jalan(mulai_sekarang=False):
 
         tag = C.EMAIL_TO_TAG.get((i.get('akun') or '').lower()) or (i.get('akun') or '?').split('@')[0]
         try:
-            kirim_dt = datetime.fromisoformat((i.get('sent') or '').split('.')[0])
+            # Lag dihitung dari waktu ARSIP menyimpan, bukan tanggal pengirim.
+            # Ada pengirim yang memundurkan header Date berjam-jam (DMARC Google
+            # tercatat 06:59 padahal dikirim 16:33), dan angka lag jadi menyesatkan
+            # seolah arsip yang telat.
+            dasar = (i.get('terima') or '').split('.')[0]
+            if dasar:
+                kirim_dt = datetime.fromisoformat(dasar) + timedelta(hours=C.TZ_OFFSET)
+            else:
+                kirim_dt = datetime.fromisoformat((i.get('sent') or '').split('.')[0])
             lag = max(0.0, (kini_wib() - kirim_dt).total_seconds() / 60.0)
             lag_s = '%.1fm' % lag
         except Exception:
@@ -154,7 +162,7 @@ def jalan(mulai_sekarang=False):
         # disimpan hub (tabel mail.message_status), bukan di arsip. Menuliskan
         # keterbatasan arsip di kartu cuma bikin bingung.
         baris += ['    folder : %s' % C.E(folder or '?'),
-                  '    lag  : %s (arsip → terlihat)' % lag_s,
+                  '    lag  : %s (masuk arsip → terlihat)' % lag_s,
                   '    arsip : id %s' % i['id']]
         try:
             # Tombol memakai id arsip; handler menerjemahkannya ke (akun, uid) lewat
