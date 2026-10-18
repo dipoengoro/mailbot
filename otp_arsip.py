@@ -19,6 +19,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 import config as C
+import kartu
 import otp as O
 import sumber_arsip as S
 
@@ -46,11 +47,13 @@ def simpan(d):
     os.replace(tmp, STATE)
 
 
-def kirim(teks):
+def kirim(teks, keyboard=None):
     p = {'chat_id': C.TG_CHAT, 'text': teks, 'parse_mode': 'HTML',
          'disable_web_page_preview': 'true'}
     if C.TG_THREAD:
         p['message_thread_id'] = C.TG_THREAD
+    if keyboard:
+        p['reply_markup'] = json.dumps(keyboard, ensure_ascii=False)
     req = urllib.request.Request('https://api.telegram.org/bot%s/sendMessage' % C.TG_TOKEN,
                                  data=urllib.parse.urlencode(p).encode())
     with urllib.request.urlopen(req, timeout=30) as f:
@@ -107,16 +110,24 @@ def main():
         if not d:
             continue
         akun = i.get('akun') or ''
-        baris = ['🔑 <b>kode OTP</b> · %s' % C.E(akun),
-                 '    🔑 kode : <code>%s</code>' % C.E(d.get('kode')),
-                 '    dari : %s' % C.E(dari),
-                 '    subj : %s' % C.E(subj),
-                 '    tgl  : %s' % C.E(i.get('sent') or '?'),
-                 '    folder : %s' % C.E(i.get('folder') or '?'),
-                 '    arsip : id %s' % i['id']]
+        # Lag dihitung dari waktu arsip menyimpan (bukan tanggal pengirim, yang
+        # kadang dimundurkan berjam-jam), sama seperti kartu biasa.
+        lag_s = '?'
         try:
-            res = kirim('\n'.join(baris))
-            jadwalkan(res, d.get('kode'), subj, akun, '\n'.join(baris))
+            dasar = (i.get('terima') or '').split('.')[0]
+            if dasar:
+                masuk = datetime.fromisoformat(dasar) + timedelta(hours=C.TZ_OFFSET)
+                kini = datetime.now(timezone(timedelta(hours=C.TZ_OFFSET))).replace(tzinfo=None)
+                lag_s = '%.1fm' % max(0.0, (kini - masuk).total_seconds() / 60.0)
+        except Exception:
+            pass
+        # Bentuk kartu sama dengan kartu biasa, ditambah satu baris kode di atas.
+        isi = kartu.teks('🔑 <b>kode OTP</b>', akun, dari, subj, i.get('sent'),
+                         folder=i.get('folder'), lag_s=lag_s, kode=d.get('kode'),
+                         ekor='arsip : id %s' % i['id'])
+        try:
+            res = kirim(isi, kartu.kb(i['id']))
+            jadwalkan(res, d.get('kode'), subj, akun, isi)
             with open(LOG, 'a') as f:
                 f.write('%s | otp | %s | %s | %s\n' % (
                     kini_wib().strftime('%Y-%m-%d %H:%M:%S'), akun, i['id'], subj[:70]))

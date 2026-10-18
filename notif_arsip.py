@@ -149,25 +149,21 @@ def jalan(mulai_sekarang=False):
         except Exception:
             lag_s = '?'
 
-        judul = ('📥 <b>email baru</b> · %s' if UTAMA else '🧪 <b>UJI ARSIP</b> · %s')
-        baris = [judul % C.E(i.get('akun') or tag),
-                 '    dari : %s' % C.E(dari),
-                 '    subj : %s' % C.E(subj),
-                 '    tgl  : %s' % C.E(i.get('sent') or '?')]
+        kode = None
         if O.mirip(subj):
             d = O.cari(subj, body=i.get('teks') or '', html=i.get('html') or '')
             if d:
-                baris.insert(3, '    🔑 kode : %s' % C.E(d.get('kode')))
-        # Baris "arsip tidak menyimpan status baca" dibuang: status baca sekarang
-        # disimpan hub (tabel mail.message_status), bukan di arsip. Menuliskan
-        # keterbatasan arsip di kartu cuma bikin bingung.
-        baris += ['    folder : %s' % C.E(folder or '?'),
-                  '    lag  : %s (masuk arsip → terlihat)' % lag_s,
-                  '    arsip : id %s' % i['id']]
+                kode = d.get('kode')
+        # Bentuk kartu disusun kartu.teks() supaya notifier, OTP, dan poller
+        # cadangan tidak pernah berbeda urutan barisnya.
+        isi = kartu.teks('📥 <b>email baru</b>' if UTAMA else '🧪 <b>UJI ARSIP</b>',
+                         i.get('akun') or tag, dari, subj, i.get('sent'),
+                         folder=folder, lag_s=lag_s, kode=kode,
+                         ekor='arsip : id %s' % i['id'])
         try:
             # Tombol memakai id arsip; handler menerjemahkannya ke (akun, uid) lewat
             # MessageId di berkas detail, jadi tombol lama (Lihat/Balas) tetap bekerja.
-            kirim('\n'.join(baris), kartu.kb(i['id']))
+            kirim(isi, kartu.kb(i['id']))
             terkirim += 1
             st.setdefault('kunci', []).append(kunci)
             st['kunci'] = st['kunci'][-KUNCI_MAKS:]

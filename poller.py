@@ -24,6 +24,7 @@ import socket
 socket.setdefaulttimeout(60)   # jaring pengaman: socket apa pun di poller tidak menggantung selamanya
 
 import config as C
+import kartu
 import otp as OTP
 
 STATE = C.path('state_poller.json')
@@ -326,17 +327,18 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
                 if _tahan:
                     print('  kartu ditahan (jalur arsip aktif): %s'
                           % (dec(m.get('Subject')) or '')[:46])
-            _baris = [
-                f'📥 <b>email baru</b> · {E(label)}',
-                f'    status : {"✅ sudah dibaca" if sudah else "🔵 belum dibaca"}',
-                f'    dari : {E(sname(m.get("From")))}',
-                f'    subj : {E(dec(m.get("Subject")) or "(tanpa subjek)")}',
-                f'    tgl  : {E(wib(m.get("Date")))}']
+            # Jalur cadangan tetap memakai bentuk kartu yang sama dengan jalur
+            # arsip; bedanya cuma penutupnya `uid` dan ada baris status baca.
+            _isi = kartu.teks(
+                '📥 <b>email baru</b>', label, sname(m.get('From')),
+                dec(m.get('Subject')), wib(m.get('Date')), folder=folder,
+                catatan=('status : ✅ sudah dibaca' if sudah else 'status : 🔵 belum dibaca'),
+                ekor='uid : %s · %d pesan' % (E(i.decode()), len(ids))).split('\n')
             if _otp:
-                _baris.insert(3, _otp)          # tepat di bawah baris subjek
+                _isi.insert(1, _otp)            # tepat di bawah judul
             if unread:
-                _baris.append(E(unread))
-            _baris.append(f'    uid  : {E(i.decode())} · {len(ids)} pesan di {E(folder)}')
+                _isi.append(E(unread))
+            _baris = _isi
             _res = None if _tahan else tg('\n'.join(_baris))
             # Jejak kartu terkirim — dipakai pembanding otomatis dengan arsip MailArchiver
             # (Fase 1 "satu sumber"). Hanya MENCATAT, tidak mengubah perilaku apa pun.
