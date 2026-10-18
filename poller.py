@@ -11,6 +11,7 @@ jadi email yang sama di INBOX dan label lain tidak dikabari dua kali.
 """
 import email
 import json
+import os
 import re
 import sys
 import time
@@ -484,6 +485,23 @@ if __name__ == '__main__':
     else:
         print('poller mulai (interval %d detik)' % C.POLL_INTERVAL)
         while True:
+            # Sumber tunggal = arsip. Selama arsip sehat, poller tidak menyentuh
+            # IMAP sama sekali: tidak ada gunanya membaca seluruh kotak surat tiap
+            # tiga menit hanya untuk menahan kartu. Cadangan dibangunkan dengan
+            # `touch /cfg/cadangan.on` (tanpa restart) atau MAILBOT_CADANGAN=on.
+            if (C.SUMBER_KARTU == 'arsip'
+                    and getattr(C, 'CADANGAN', 'off') != 'on'
+                    and not os.path.exists(C.path('cadangan.on'))):
+                try:
+                    with open(C.path('.heartbeat'), 'w') as _fh:
+                        _fh.write(str(int(time.time())))
+                except Exception:
+                    pass
+                if not globals().get('_kabar_tidur'):
+                    print('poller tidur: sumber kartu arsip, cadangan nonaktif')
+                    globals()['_kabar_tidur'] = True
+                time.sleep(60)
+                continue
             _FOLDERS, _UNREAD = {}, {}
             for _t, _l in ACCTS:
                 try:
@@ -507,9 +525,13 @@ if __name__ == '__main__':
                 except Exception as e:
                     print('err', l, type(e).__name__, str(e)[:80])
             # heartbeat: dipakai healthcheck container & watchdog luar
-            try:
-                with open(C.path('.heartbeat'), 'w') as _fh:
-                    _fh.write(str(int(time.time())))
-            except Exception:
-                pass
-            time.sleep(C.POLL_INTERVAL)
+            # Denyut ditulis sekalian selama jeda, bukan cuma di ujung putaran:
+            # kalau tidak, watchdog melihat poller "diam" selama interval penuh.
+            _selesai = time.time() + C.POLL_INTERVAL
+            while time.time() < _selesai:
+                try:
+                    with open(C.path('.heartbeat'), 'w') as _fh:
+                        _fh.write(str(int(time.time())))
+                except Exception:
+                    pass
+                time.sleep(min(60, max(1, _selesai - time.time())))

@@ -329,6 +329,14 @@ Detail + contoh perintah: [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
 - **Ganti akun** = ubah `MAILBOT_ACCOUNTS` + variabel `IMAP_<TAG>_*`, lalu recreate.
 - **Healthcheck**: `docker inspect --format '{{.State.Health.Status}}' mailbot`
   (`healthy`/`unhealthy`, dan alasannya terlihat di `.State.Health.Log`).
+- **Satu sumber**: kartu email dan OTP hanya dari arsip (`MAILBOT_SUMBER_KARTU=arsip`).
+  Selama arsip sehat, poller IMAP tidur — tidak membaca kotak surat sama sekali, hanya
+  menulis denyut tiap 60 detik supaya watchdog tidak berbunyi.
+- **Menyalakan jalur cadangan** (hanya saat arsip diperbaiki): `docker exec mailbot
+  touch /cfg/cadangan.on`. Poller bangun pada putaran berikutnya, membaca IMAP, dan
+  mengirim kartu **hanya kalau feed arsip basi** lebih `MAILBOT_BASI_FEED_KARTU` menit.
+  Matikan lagi dengan `docker exec mailbot rm /cfg/cadangan.on` — tanpa restart.
+  Cara lain: `MAILBOT_CADANGAN=on` di `.env` lalu recreate.
 
 ## Struktur repo
 

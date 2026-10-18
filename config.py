@@ -102,6 +102,9 @@ TTL_OTP = _num('MAILBOT_TTL_OTP', 900)
 # Saat 'arsip': poller tetap mengirim kartu OTP dan menjadi cadangan kalau feed basi.
 SUMBER_KARTU = (get('MAILBOT_SUMBER_KARTU') or 'poller').strip().lower()
 BASI_FEED_KARTU = int(get('MAILBOT_BASI_FEED_KARTU') or 10)   # menit
+# Arsip adalah satu-satunya sumber kartu. Poller (jalur IMAP) hanya dibangunkan
+# saat kak memintanya, yaitu ketika arsip sedang diperbaiki.
+CADANGAN = (get('MAILBOT_CADANGAN') or 'off').strip().lower()
 
 # Ayn — tempat status email (penting/dibaca) disimpan. Bot hanya menulis lewat API,
 # tidak pernah menyentuh database Ayn langsung.
