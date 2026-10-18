@@ -318,10 +318,10 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
             except Exception as e:
                 _otp = None
                 print('  otp err', type(e).__name__, str(e)[:70])
-            # Kartu reguler boleh diserahkan ke jalur arsip (notif_arsip.py). OTP tetap di sini
-            # karena jalur arsip lebih lambat (antrean sync 2 menit), sedangkan OTP balapan waktu.
+            # Kartu (termasuk OTP) diserahkan ke jalur arsip kalau feed segar: notif_arsip.py
+            # untuk kartu biasa, otp_arsip.py untuk kode. Poller jadi cadangan saat feed basi.
             _tahan = False
-            if C.SUMBER_KARTU == 'arsip' and not _otp:
+            if C.SUMBER_KARTU == 'arsip':
                 _tahan = feed_segar()
                 if _tahan:
                     print('  kartu ditahan (jalur arsip aktif): %s'
