@@ -103,6 +103,11 @@ TTL_OTP = _num('MAILBOT_TTL_OTP', 900)
 SUMBER_KARTU = (get('MAILBOT_SUMBER_KARTU') or 'poller').strip().lower()
 BASI_FEED_KARTU = int(get('MAILBOT_BASI_FEED_KARTU') or 10)   # menit
 
+# Ayn — tempat status email (penting/dibaca) disimpan. Bot hanya menulis lewat API,
+# tidak pernah menyentuh database Ayn langsung.
+AYN_API_URL = (get('AYN_API_URL') or '').rstrip('/')
+AYN_API_TOKEN = get('AYN_API_TOKEN') or ''
+
 SKIP_FROM = get('MAILBOT_SKIP_FROM') or ''
 SKIP_SUBJECT = get('MAILBOT_SKIP_SUBJECT') or ''
 # Email yang dilewati ditandai sudah dibaca (biar ringkasan "belum dibaca" tidak menumpuk

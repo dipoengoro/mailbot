@@ -24,6 +24,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 import config as C
+import kartu
 import otp as O
 import sumber_arsip as S
 
@@ -156,9 +157,7 @@ def jalan(mulai_sekarang=False):
         try:
             # Tombol memakai id arsip; handler menerjemahkannya ke (akun, uid) lewat
             # MessageId di berkas detail, jadi tombol lama (Lihat/Balas) tetap bekerja.
-            kirim('\n'.join(baris), {'inline_keyboard': [[
-                {'text': '👁 Lihat', 'callback_data': 'alook:%s' % i['id']},
-                {'text': '✍️ Balas', 'callback_data': 'areply:%s' % i['id']}]]})
+            kirim('\n'.join(baris), kartu.kb(i['id']))
             terkirim += 1
             st.setdefault('kunci', []).append(kunci)
             st['kunci'] = st['kunci'][-KUNCI_MAKS:]

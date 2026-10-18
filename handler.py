@@ -25,6 +25,7 @@ from email.mime.text import MIMEText
 from email.utils import formatdate
 
 import config as C
+import kartu
 
 ST = C.path('state.json')
 ACC = C.EMAIL_TO_TAG              # alamat email -> tag akun
@@ -283,6 +284,64 @@ def detail(acct, uid):
 
 
 # Status kartu setelah tombol berhasil ditekan (poller menulis status awalnya).
+def arsip_detail(arsip_id):
+    """Isi berkas detail email arsip (ditulis skrip feed di host)."""
+    try:
+        with open(C.path('arsip_detail/%s.json' % arsip_id)) as f:
+            return json.load(f)
+    except Exception:
+        raise RuntimeError('detail arsip %s tidak ada (mungkin sudah lewat 8 hari)' % arsip_id)
+
+
+def ayn(jalan, muatan=None):
+    """Panggil API Ayn. Yang ditulis hanya status milik kita; isi email tidak diubah."""
+    if not C.AYN_API_URL or not C.AYN_API_TOKEN:
+        raise RuntimeError('AYN_API_URL/AYN_API_TOKEN belum diisi di server')
+    data = json.dumps(muatan).encode() if muatan is not None else None
+    req = urllib.request.Request(
+        C.AYN_API_URL + jalan, data=data,
+        headers={'Authorization': 'Bearer ' + C.AYN_API_TOKEN,
+                 'Content-Type': 'application/json'},
+        method='POST' if data is not None else 'GET')
+    with urllib.request.urlopen(req, timeout=20) as f:
+        return json.loads(f.read().decode())
+
+
+def aksi_penanda(jenis, arsip_id):
+    """Tombol ⭐ dan ✅ di kartu arsip: ubah status di Ayn, bukan di mailbox.
+
+    Ayn yang menyimpan status (tabel mail.message_status). Mailbox dan arsip tidak
+    disentuh, jadi tidak ada flag \\Seen yang ditulis ke provider.
+    """
+    d = arsip_detail(arsip_id)
+    akun = (d.get('akun') or '').strip()
+    mid = (d.get('MessageId') or '').strip()
+    if not akun or not mid:
+        raise RuntimeError('detail arsip tidak lengkap (akun/MessageId kosong)')
+    dasar = {'account': akun, 'message_id': mid,
+             'subject': (d.get('Subject') or '')[:500],
+             'sender': (d.get('From') or '')[:500],
+             'sent_at': d.get('SentDate'),
+             'archive_id': int(arsip_id)}
+    if jenis == 'astar':
+        kini = False
+        try:
+            jawab = ayn('/api/v1/mail/messages/%s' % arsip_id)
+            kini = bool((jawab.get('message') or {}).get('important'))
+        except Exception:
+            pass                       # gagal baca = anggap belum penting
+        hasil = ayn('/api/v1/mail/status', dict(dasar, important=not kini)).get('status') or {}
+        baru = bool(hasil.get('important'))
+        return ('⭐ ditandai penting' if baru else '☆ tanda penting dilepas'), baru
+    ayn('/api/v1/mail/status', dict(dasar, read=True, read_source='bot'))
+    penting = False
+    try:
+        penting = bool((ayn('/api/v1/mail/messages/%s' % arsip_id).get('message') or {}).get('important'))
+    except Exception:
+        pass
+    return '✅ ditandai sudah dibaca', penting
+
+
 def arsip_ke_acct_uid(arsip_id):
     """Terjemahkan id arsip -> (alamat akun, uid IMAP) supaya tombol lama tetap dipakai.
 
@@ -888,7 +947,19 @@ def handle_once():
                 if len(p) == 2 and p[0] in ('alook', 'areply'):
                     _a, _u = arsip_ke_acct_uid(p[1])
                     p = ['look' if p[0] == 'alook' else 'reply', _a, _u]
-                msg = (do(p[0], p[1], p[2]) if len(p) == 3 else None) or 'aksi fase C'
+                if len(p) == 2 and p[0] in ('astar', 'aread'):
+                    # Status disimpan Ayn; kartu langsung diperbarui di tempat supaya
+                    # bintangnya terlihat berubah tanpa menunggu kartu baru.
+                    _pesan, _penting = aksi_penanda(p[0], p[1])
+                    msg = _pesan
+                    try:
+                        api('editMessageReplyMarkup', chat_id=CHAT, message_id=CARD_ID,
+                            reply_markup=json.dumps(kartu.kb(
+                                p[1], penting=_penting, dibaca=(p[0] == 'aread'))))
+                    except Exception as e:
+                        print('markup err', type(e).__name__, str(e)[:60])
+                else:
+                    msg = (do(p[0], p[1], p[2]) if len(p) == 3 else None) or 'aksi fase C'
             except Exception as e:
                 msg = f'gagal: {type(e).__name__}: {str(e)[:130]}'
             # kartunya sendiri diperbarui (status + angka sisa) SEBELUM pesan hasil dikirim,
