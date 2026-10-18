@@ -29,13 +29,18 @@ import sumber_arsip as S
 
 STATE = C.path('state_notif_arsip.json')
 LOG_KARTU = C.path('kartu_arsip.log')
-CHAT = os.environ.get('KANARI_CHAT') or '-1003949807125'
-THREAD = os.environ.get('KANARI_THREAD') or '57'
+# Mode: 'kanari' (uji, ke topik monitoring) atau 'utama' (kartu asli ke chat utama).
+# Aktifkan utama lewat MAILBOT_SUMBER_KARTU=arsip di .env bot.
+UTAMA = (C.SUMBER_KARTU == 'arsip')
+CHAT = C.TG_CHAT if UTAMA else (os.environ.get('KANARI_CHAT') or '-1003949807125')
+THREAD = C.TG_THREAD if UTAMA else (os.environ.get('KANARI_THREAD') or '57')
 BASI_FEED = 10
 # CATATAN PENTING (temuan 17 Okt): Gmail kadang hanya menyimpan salinan di LABEL
 # ("[Gmail]/Penting"), tanpa salinan INBOX. Kalau folder label ikut dibuang, email seperti itu
 # hilang dari notifikasi. Jadi label DIPERBOLEHKAN; yang dibuang hanya folder sampah/keluaran.
-BUANG_RE = re.compile(r'(spam|junk|bulk|sampah|trash|draf|draft|sent|terkirim|template)', re.I)
+# Spam/Trash SENGAJA tidak dibuang: poller biasa mengartukan email yang masuk INBOX lalu
+# dipindah filter ke Spam/Trash, jadi arsip harus ikut mengartukan agar tidak ada yang hilang.
+BUANG_RE = re.compile(r'(draf|draft|sent|terkirim|template|arsip|archive)', re.I)
 KUNCI_MAKS = 400
 
 
@@ -120,6 +125,11 @@ def jalan(mulai_sekarang=False):
             st['last_id'] = max(st['last_id'], i['id'])
             continue
 
+        # OTP tetap jalur poller (lebih cepat). Di mode utama, jangan kartukan ulang di sini.
+        if UTAMA and O.mirip(subj):
+            st['last_id'] = max(st['last_id'], i['id'])
+            continue
+
         tag = C.EMAIL_TO_TAG.get((i.get('akun') or '').lower()) or (i.get('akun') or '?').split('@')[0]
         try:
             kirim_dt = datetime.fromisoformat((i.get('sent') or '').split('.')[0])
@@ -128,7 +138,8 @@ def jalan(mulai_sekarang=False):
         except Exception:
             lag_s = '?'
 
-        baris = ['🧪 <b>UJI ARSIP</b> · %s' % C.E(i.get('akun') or tag),
+        judul = ('📥 <b>email baru</b> · %s' if UTAMA else '🧪 <b>UJI ARSIP</b> · %s')
+        baris = [judul % C.E(i.get('akun') or tag),
                  '    dari : %s' % C.E(dari),
                  '    subj : %s' % C.E(subj),
                  '    tgl  : %s' % C.E(i.get('sent') or '?')]

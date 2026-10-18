@@ -98,6 +98,11 @@ TTL_OTP = _num('MAILBOT_TTL_OTP', 900)
 # (email tetap ada di mailbox; tidak dihapus/dipindah). Dipisah koma atau titik-koma.
 #   MAILBOT_SKIP_FROM=zabbix-bcp@telkomsel\.co\.id
 #   MAILBOT_SKIP_SUBJECT=^BCP Production
+# Sumber kartu: 'poller' (lama, jalur IMAP) atau 'arsip' (kartu dari feed MailArchiver).
+# Saat 'arsip': poller tetap mengirim kartu OTP dan menjadi cadangan kalau feed basi.
+SUMBER_KARTU = (get('MAILBOT_SUMBER_KARTU') or 'poller').strip().lower()
+BASI_FEED_KARTU = int(get('MAILBOT_BASI_FEED_KARTU') or 10)   # menit
+
 SKIP_FROM = get('MAILBOT_SKIP_FROM') or ''
 SKIP_SUBJECT = get('MAILBOT_SKIP_SUBJECT') or ''
 # Email yang dilewati ditandai sudah dibaca (biar ringkasan "belum dibaca" tidak menumpuk

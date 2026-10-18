@@ -214,6 +214,19 @@ def otp_kartu(M, uid, subj):
     return baris
 
 
+def feed_segar():
+    """True kalau feed arsip masih segar (dipakai saat kartu diserahkan ke jalur arsip).
+
+    Kalau feed basi, poller TIDAK menahan kartu: dia jadi cadangan supaya notifikasi tidak
+    berhenti total ketika skrip feed/sync MailArchiver bermasalah.
+    """
+    try:
+        d = json.load(open(C.path('arsip_feed.json')))
+        return (time.time() - float(d.get('dibuat') or 0)) < C.BASI_FEED_KARTU * 60
+    except Exception:
+        return False
+
+
 def lewati_email(pengirim, subjek):
     """True kalau kartu untuk email ini TIDAK boleh dikirim (aturan exclude Dipo).
 
@@ -300,25 +313,36 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
             time.sleep(0.3)
             continue
         if send:
+            try:
+                _otp = otp_kartu(M, i, dec(m.get('Subject')))
+            except Exception as e:
+                _otp = None
+                print('  otp err', type(e).__name__, str(e)[:70])
+            # Kartu reguler boleh diserahkan ke jalur arsip (notif_arsip.py). OTP tetap di sini
+            # karena jalur arsip lebih lambat (antrean sync 2 menit), sedangkan OTP balapan waktu.
+            _tahan = False
+            if C.SUMBER_KARTU == 'arsip' and not _otp:
+                _tahan = feed_segar()
+                if _tahan:
+                    print('  kartu ditahan (jalur arsip aktif): %s'
+                          % (dec(m.get('Subject')) or '')[:46])
             _baris = [
                 f'📥 <b>email baru</b> · {E(label)}',
                 f'    status : {"✅ sudah dibaca" if sudah else "🔵 belum dibaca"}',
                 f'    dari : {E(sname(m.get("From")))}',
                 f'    subj : {E(dec(m.get("Subject")) or "(tanpa subjek)")}',
                 f'    tgl  : {E(wib(m.get("Date")))}']
-            try:
-                _otp = otp_kartu(M, i, dec(m.get('Subject')))
-                if _otp:
-                    _baris.insert(3, _otp)          # tepat di bawah baris subjek
-            except Exception as e:
-                print('  otp err', type(e).__name__, str(e)[:70])
+            if _otp:
+                _baris.insert(3, _otp)          # tepat di bawah baris subjek
             if unread:
                 _baris.append(E(unread))
             _baris.append(f'    uid  : {E(i.decode())} · {len(ids)} pesan di {E(folder)}')
-            _res = tg('\n'.join(_baris))
+            _res = None if _tahan else tg('\n'.join(_baris))
             # Jejak kartu terkirim — dipakai pembanding otomatis dengan arsip MailArchiver
             # (Fase 1 "satu sumber"). Hanya MENCATAT, tidak mengubah perilaku apa pun.
             try:
+                if _tahan:
+                    raise RuntimeError('ditahan')   # jangan catat sebagai kartu terkirim
                 _skg = time.strftime('%Y-%m-%d %H:%M:%S',
                                      time.localtime(time.time() + C.TZ_OFFSET * 3600))
                 with open(C.path('kartu.log'), 'a') as _fk:
