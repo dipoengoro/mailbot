@@ -44,6 +44,14 @@ def main():
     ka = {k['kunci'] for k in arsip}
     hilang = [k for k in poller if k['kunci'] not in ka]
     lebih = [k for k in arsip if k['kunci'] not in kp]
+    import os
+    import time
+    _flip = C.path('flip_arsip.txt')
+    if os.path.exists(_flip):
+        _t = open(_flip).read().strip()
+        poller = [k for k in poller if k['waktu'] < _t]
+        print('catatan: kartu poller dihitung hanya SEBELUM flip (%s) — sesudah flip kartu '
+              'dikirim jalur arsip, poller cuma OTP + cadangan' % _t)
     print('periode %s s/d sekarang' % mulai)
     print('kartu poller: %d | kartu uji arsip: %d' % (len(poller), len(arsip)))
     if hilang:

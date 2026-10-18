@@ -283,6 +283,42 @@ def detail(acct, uid):
 
 
 # Status kartu setelah tombol berhasil ditekan (poller menulis status awalnya).
+def arsip_ke_acct_uid(arsip_id):
+    """Terjemahkan id arsip -> (alamat akun, uid IMAP) supaya tombol lama tetap dipakai.
+
+    Kartu jalur arsip hanya membawa id arsip. Berkas detail (ditulis skrip feed di host) memuat
+    MessageId; uid dicari di mailbox lewat SEARCH HEADER. Hasilnya dipakai aksi look/reply yang
+    sudah ada, tanpa menduplikasi logika tombol.
+    """
+    import json as _json
+    try:
+        d = _json.load(open(C.path('arsip_detail/%s.json' % arsip_id)))
+    except Exception:
+        raise RuntimeError('detail arsip %s tidak ada (mungkin sudah lewat 8 hari)' % arsip_id)
+    email = (d.get('akun') or '').strip().lower()
+    mid = (d.get('MessageId') or '').strip()
+    if not email or not mid:
+        raise RuntimeError('detail arsip tidak lengkap (akun/MessageId kosong)')
+    if email not in ACC:
+        raise RuntimeError('akun %s tidak lagi dipantau' % email)
+    M = C.imap(ACC[email])
+    try:
+        for _f in FOLDER_KANDIDAT:
+            try:
+                if M.select(_f)[0] != 'OK':
+                    continue
+                _t, _d = M.uid('SEARCH', None, 'HEADER', 'Message-ID', '"%s"' % mid)
+                if _d and _d[0]:
+                    _u = _d[0].split()
+                    if _u:
+                        return email, (_u[-1].decode() if isinstance(_u[-1], bytes) else str(_u[-1]))
+            except Exception:
+                continue
+    finally:
+        C.tutup(M)
+    raise RuntimeError('email sudah tidak ada di mailbox (arsip masih punya) — pakai tombol Arsip')
+
+
 STATUS_AKSI = {'look': '✅ sudah dibaca', 'seen': '✅ sudah dibaca', 'arch': '📁 diarsipkan'}
 
 
@@ -849,6 +885,9 @@ def handle_once():
             # kartu yang ditap -> dipakai say() biar hasilnya jadi reply ke kartu itu
             CARD_ID = ((cq.get('message') or {}).get('message_id')) or None
             try:
+                if len(p) == 2 and p[0] in ('alook', 'areply'):
+                    _a, _u = arsip_ke_acct_uid(p[1])
+                    p = ['look' if p[0] == 'alook' else 'reply', _a, _u]
                 msg = (do(p[0], p[1], p[2]) if len(p) == 3 else None) or 'aksi fase C'
             except Exception as e:
                 msg = f'gagal: {type(e).__name__}: {str(e)[:130]}'

@@ -67,9 +67,11 @@ def tulis_log(baris):
         f.write(baris + '\n')
 
 
-def kirim(teks):
+def kirim(teks, markup=None):
     p = {'chat_id': CHAT, 'text': teks, 'parse_mode': 'HTML',
          'disable_web_page_preview': 'true', 'message_thread_id': THREAD}
+    if markup:
+        p['reply_markup'] = json.dumps(markup)
     req = urllib.request.Request(
         'https://api.telegram.org/bot%s/sendMessage' % C.TG_TOKEN,
         data=urllib.parse.urlencode(p).encode())
@@ -152,7 +154,11 @@ def jalan(mulai_sekarang=False):
                   '    status : arsip tidak menyimpan status baca',
                   '    arsip : id %s' % i['id']]
         try:
-            kirim('\n'.join(baris))
+            # Tombol memakai id arsip; handler menerjemahkannya ke (akun, uid) lewat
+            # MessageId di berkas detail, jadi tombol lama (Lihat/Balas) tetap bekerja.
+            kirim('\n'.join(baris), {'inline_keyboard': [[
+                {'text': '👁 Lihat', 'callback_data': 'alook:%s' % i['id']},
+                {'text': '✍️ Balas', 'callback_data': 'areply:%s' % i['id']}]]})
             terkirim += 1
             st.setdefault('kunci', []).append(kunci)
             st['kunci'] = st['kunci'][-KUNCI_MAKS:]
