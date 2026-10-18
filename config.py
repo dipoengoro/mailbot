@@ -277,6 +277,9 @@ TG_TOKEN = ENV.get('TELEGRAM_BOT_TOKEN', '')
 TG_CHAT = ENV.get('TELEGRAM_HOME_CHANNEL', '')
 TG_THREAD = ENV.get('TELEGRAM_HOME_THREAD', '')
 TG_ALLOWED = set(x for x in ENV.get('TELEGRAM_ALLOWED_USERS', '').split(',') if x)
+# Kanal kabar operasional (mitigasi arsip). Bawaan: topik monitoring.
+ALERT_CHAT = (ENV.get('MAILBOT_ALERT_CHAT') or TG_CHAT or '').strip()
+ALERT_THREAD = (ENV.get('MAILBOT_ALERT_THREAD') or '').strip()
 # Username bot (tanpa @), dipakai handler untuk memastikan balasan memang reply ke pesan bot.
 # Ambil dari nama bot di BotFather, atau isi MAILBOT_BOT_USERNAME di .env.
 BOT_USERNAME = ENV.get('MAILBOT_BOT_USERNAME', '').lstrip('@')

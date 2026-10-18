@@ -467,6 +467,97 @@ def testmail():
     print('email uji terkirim ke', user)
 
 
+CADANGAN_STATE = 'cadangan_state.json'
+
+
+def cadangan_aktif():
+    """Apakah jalur cadangan sedang menyala (otomatis atau diminta).
+
+    Disimpan di berkas, bukan variabel memori: supervisor bisa menaikkan ulang
+    poller kapan saja, dan SOP mitigasi tidak boleh hilang gara-gara itu.
+    """
+    try:
+        d = json.load(open(C.path(CADANGAN_STATE)))
+        return bool(d.get('aktif'))
+    except Exception:
+        return False
+
+
+def set_cadangan(aktif, umur=None, cara='otomatis'):
+    try:
+        if aktif:
+            with open(C.path(CADANGAN_STATE), 'w') as f:
+                json.dump({'aktif': True, 'mulai': int(time.time()),
+                           'umur_feed': umur, 'cara': cara}, f)
+        else:
+            os.remove(C.path(CADANGAN_STATE))
+    except Exception as e:
+        print('  state cadangan err', type(e).__name__, str(e)[:60])
+
+
+def umur_feed():
+    """Umur feed arsip dalam menit; None kalau berkasnya tidak ada."""
+    try:
+        return (time.time() - os.path.getmtime(C.path('arsip_feed.json'))) / 60.0
+    except Exception:
+        return None
+
+
+def _waktu_umur(m):
+    return 'berkas feed tidak ada' if m is None else '%.1f menit lalu' % m
+
+
+def _lewatkan_arsip_yang_sudah_dikartukan():
+    """Setelah cadangan mati, lompati kartu arsip yang sudah dikirim lewat IMAP.
+
+    Tanpa ini, begitu arsip pulih, notifier akan mengirim ulang semua email yang
+    tadi sudah dikartukan poller — pengguna dapat dua kartu untuk satu email.
+    """
+    try:
+        d = json.load(open(C.path('arsip_feed.json')))
+        maks = max((x['id'] for x in d.get('items', [])), default=0)
+        jalur = C.path('state_notif_arsip.json')
+        st = json.load(open(jalur)) if os.path.exists(jalur) else {}
+        if maks and maks > st.get('last_id', 0):
+            st['last_id'] = maks
+            with open(jalur, 'w') as f:
+                json.dump(st, f)
+            print('  watermark arsip -> id %s (kartu sudah lewat IMAP)' % maks)
+    except Exception as e:
+        print('  watermark err', type(e).__name__, str(e)[:60])
+
+
+def kabar_ops(teks):
+    """Kabar mitigasi ke kanal ops, terpisah dari chat kartu."""
+    chat = getattr(C, 'ALERT_CHAT', '') or C.TG_CHAT
+    if not (C.TG_TOKEN and chat):
+        return
+    muatan = {'chat_id': chat, 'text': teks, 'parse_mode': 'HTML',
+              'disable_web_page_preview': 'true'}
+    th = getattr(C, 'ALERT_THREAD', '')
+    if th:
+        muatan['message_thread_id'] = th
+    try:
+        req = urllib.request.Request('https://api.telegram.org/bot%s/sendMessage' % C.TG_TOKEN,
+                                     data=urllib.parse.urlencode(muatan).encode())
+        urllib.request.urlopen(req, timeout=20).read()
+    except Exception as e:
+        print('  kabar ops gagal', type(e).__name__, str(e)[:60])
+
+
+def cek_imap_semua():
+    """Coba sambung ke tiap akun. (berhasil, total, daftar gagal)."""
+    ok, gagal = 0, []
+    for t, l in ACCTS:
+        try:
+            M = C.imap(t)
+            C.tutup(M)
+            ok += 1
+        except Exception as e:
+            gagal.append('%s (%s)' % (l, type(e).__name__))
+    return ok, len(ACCTS), gagal
+
+
 if __name__ == '__main__':
     if '--test' in sys.argv:
         testmail()
@@ -484,14 +575,21 @@ if __name__ == '__main__':
                 print(f'{l}: GAGAL {type(e).__name__}: {str(e)[:90]}')
     else:
         print('poller mulai (interval %d detik)' % C.POLL_INTERVAL)
+        print('poller mulai (interval %d detik)' % C.POLL_INTERVAL)
         while True:
-            # Sumber tunggal = arsip. Selama arsip sehat, poller tidak menyentuh
-            # IMAP sama sekali: tidak ada gunanya membaca seluruh kotak surat tiap
-            # tiga menit hanya untuk menahan kartu. Cadangan dibangunkan dengan
-            # `touch /cfg/cadangan.on` (tanpa restart) atau MAILBOT_CADANGAN=on.
-            if (C.SUMBER_KARTU == 'arsip'
-                    and getattr(C, 'CADANGAN', 'off') != 'on'
-                    and not os.path.exists(C.path('cadangan.on'))):
+            # Arsip satu-satunya sumber kartu. Poller tidur selama arsip sehat dan
+            # bangun SENDIRI begitu feed basi lebih BASI_FEED_KARTU menit — SOP
+            # mitigasi: koneksi IMAP dinyalakan otomatis, jangan menunggu perintah.
+            _umur = umur_feed()
+            _basi = _umur is not None and _umur >= C.BASI_FEED_KARTU
+            _paksa = (getattr(C, 'CADANGAN', 'off') == 'on'
+                      or os.path.exists(C.path('cadangan.on')))
+            if C.SUMBER_KARTU == 'arsip' and not _paksa and not _basi:
+                if cadangan_aktif():
+                    set_cadangan(False)
+                    _lewatkan_arsip_yang_sudah_dikartukan()
+                    kabar_ops('✅ <b>arsip pulih</b> — cadangan IMAP dimatikan otomatis\n'
+                              '    feed terakhir: %s' % _waktu_umur(_umur))
                 try:
                     with open(C.path('.heartbeat'), 'w') as _fh:
                         _fh.write(str(int(time.time())))
@@ -502,6 +600,24 @@ if __name__ == '__main__':
                     globals()['_kabar_tidur'] = True
                 time.sleep(60)
                 continue
+            if C.SUMBER_KARTU == 'arsip' and _basi and not _paksa:
+                if not cadangan_aktif():
+                    set_cadangan(True, umur=_umur)
+                    globals()['_kabar_tidur'] = False
+                    print('arsip basi %.1f menit -> cadangan IMAP otomatis aktif' % (_umur or 0))
+                    kabar_ops('🚨 <b>arsip diam %s</b> — jalur cadangan IMAP dinyalakan '
+                              'otomatis. Kartu tetap masuk lewat IMAP sampai arsip sehat.'
+                              % _waktu_umur(_umur))
+                    _ok, _total, _gagal = cek_imap_semua()
+                    if _gagal:
+                        kabar_ops('⚠️ <b>koneksi IMAP</b>: %d/%d akun tersambung\n'
+                                  '    gagal: %s' % (_ok, _total, ', '.join(_gagal[:4])))
+                    else:
+                        kabar_ops('✅ <b>koneksi IMAP</b>: %d/%d akun tersambung' % (_ok, _total))
+                    globals()['_kabar_terakhir'] = time.time()
+                elif time.time() - globals().get('_kabar_terakhir', 0) > 1800:
+                    globals()['_kabar_terakhir'] = time.time()
+                    kabar_ops('⏳ masih cadangan — arsip diam %s' % _waktu_umur(_umur))
             _FOLDERS, _UNREAD = {}, {}
             for _t, _l in ACCTS:
                 try:
@@ -515,6 +631,11 @@ if __name__ == '__main__':
                     _FOLDERS[_t] = ['INBOX']
                     _UNREAD[_t] = ''
             for t, l in ACCTS:
+                # Arsip pulih di tengah putaran: berhenti memeriksa sisa akun
+                # supaya cadangan cepat mati, tidak menunggu seluruh kotak surat.
+                if cadangan_aktif() and (umur_feed() or 1e9) < C.BASI_FEED_KARTU:
+                    print('  arsip pulih di tengah putaran: berhenti memeriksa IMAP')
+                    break
                 try:
                     _n = 0
                     for _f in _FOLDERS[t]:

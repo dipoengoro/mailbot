@@ -332,11 +332,20 @@ Detail + contoh perintah: [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
 - **Satu sumber**: kartu email dan OTP hanya dari arsip (`MAILBOT_SUMBER_KARTU=arsip`).
   Selama arsip sehat, poller IMAP tidur — tidak membaca kotak surat sama sekali, hanya
   menulis denyut tiap 60 detik supaya watchdog tidak berbunyi.
-- **Menyalakan jalur cadangan** (hanya saat arsip diperbaiki): `docker exec mailbot
-  touch /cfg/cadangan.on`. Poller bangun pada putaran berikutnya, membaca IMAP, dan
-  mengirim kartu **hanya kalau feed arsip basi** lebih `MAILBOT_BASI_FEED_KARTU` menit.
-  Matikan lagi dengan `docker exec mailbot rm /cfg/cadangan.on` — tanpa restart.
-  Cara lain: `MAILBOT_CADANGAN=on` di `.env` lalu recreate.
+- **SOP mitigasi arsip** (otomatis, tanpa menunggu perintah):
+  1. Poller memeriksa umur feed tiap 60 detik. Begitu feed basi lebih
+     `MAILBOT_BASI_FEED_KARTU` menit (bawaan 10), poller **menyalakan sendiri** jalur
+     IMAP dan mengirim kabar ke kanal ops (`MAILBOT_ALERT_CHAT`/`_THREAD`).
+  2. Setelah itu ia **memeriksa koneksi** ke semua akun; hasilnya (`8/8 akun tersambung`
+     atau daftar yang gagal) ikut dikirim, jadi kelihatan apakah masalahnya di arsip saja
+     atau juga di IMAP.
+  3. Kartu tetap masuk lewat IMAP selama arsip sakit. Pengingat dikirim tiap 30 menit.
+  4. Begitu feed segar lagi, cadangan **dimatikan otomatis**, watermark notifier arsip
+     dinaikkan supaya email yang tadi sudah dikartukan tidak dikirim dua kali, dan kabar
+     `arsip pulih` dikirim.
+  5. Keadaan cadangan disimpan di `data/cadangan_state.json` — tahan restart supervisor.
+  Paksa nyala/mati manual (mis. saat menguji): `docker exec mailbot touch
+  /cfg/cadangan.on` / `rm /cfg/cadangan.on`, atau `MAILBOT_CADANGAN=on` di `.env`.
 
 ## Struktur repo
 
