@@ -28,8 +28,14 @@ def kb(arsip_id, penting=False, dibaca=False):
     ]}
 
 
+def label_status(penting=False, dibaca=False):
+    """Satu baris status yang selalu ada di kartu."""
+    return '%s · %s' % ('★ penting' if penting else '☆ biasa',
+                        '✅ sudah dibaca' if dibaca else '🔵 belum dibaca')
+
+
 def teks(judul, akun, dari, subj, tgl, folder=None, lag_s=None,
-         kode=None, ekor=None, catatan=None):
+         kode=None, status=None, ekor=None, catatan=None):
     """Susun isi kartu dengan urutan baris yang tetap.
 
     Urutannya: judul, kode (kalau ada), dari, subjek, tanggal, folder, lag,
@@ -46,6 +52,8 @@ def teks(judul, akun, dari, subj, tgl, folder=None, lag_s=None,
         baris.append('    folder : %s' % C.E(folder))
     if lag_s:
         baris.append('    lag  : %s (masuk arsip → terlihat)' % lag_s)
+    if status:
+        baris.append('    status : %s' % status)
     if catatan:
         baris.append('    %s' % catatan)
     if ekor:

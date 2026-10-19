@@ -332,14 +332,11 @@ def aksi_penanda(jenis, arsip_id):
             pass                       # gagal baca = anggap belum penting
         hasil = ayn('/api/v1/mail/status', dict(dasar, important=not kini)).get('status') or {}
         baru = bool(hasil.get('important'))
-        return ('⭐ ditandai penting' if baru else '☆ tanda penting dilepas'), baru
-    ayn('/api/v1/mail/status', dict(dasar, read=True, read_source='bot'))
-    penting = False
-    try:
-        penting = bool((ayn('/api/v1/mail/messages/%s' % arsip_id).get('message') or {}).get('important'))
-    except Exception:
-        pass
-    return '✅ ditandai sudah dibaca', penting
+        dibaca = bool(hasil.get('read_at'))
+        return ('⭐ ditandai penting' if baru else '☆ tanda penting dilepas'), baru, dibaca
+    hasil = ayn('/api/v1/mail/status', dict(dasar, read=True, read_source='bot')).get('status') or {}
+    penting = bool(hasil.get('important'))
+    return '✅ ditandai sudah dibaca', penting, True
 
 
 def arsip_ke_acct_uid(arsip_id):
@@ -412,6 +409,11 @@ def edit_card(cq, status=None, acct=None):
     # hanya berubah lewat percobaan kedua tanpa parse_mode.
     baru = E(txt)
     if status:
+        # Pertahankan penanda ★/☆ yang sudah ada di kartu kalau status baru tidak
+        # membawanya (mis. dari tombol Lihat: cuma "✅ sudah dibaca").
+        _lama = _rx.search(r'^    status : (.*)$', baru, _rx.M)
+        if _lama and '·' in _lama.group(1) and '·' not in status:
+            status = '%s · %s' % (_lama.group(1).split('·')[0].strip(), status)
         _s = '    status : ' + E(status)
         baru = (_rx.sub(r'^    status :.*$', lambda _m: _s, baru, flags=_rx.M)
                 if _rx.search(r'^    status :.*$', baru, _rx.M)
@@ -949,13 +951,17 @@ def handle_once():
                     p = ['look' if p[0] == 'alook' else 'reply', _a, _u]
                 if len(p) == 2 and p[0] in ('astar', 'aread'):
                     # Status disimpan Ayn; kartu langsung diperbarui di tempat supaya
-                    # bintangnya terlihat berubah tanpa menunggu kartu baru.
-                    _pesan, _penting = aksi_penanda(p[0], p[1])
+                    # baris status dan label tombol berubah tanpa menunggu kartu baru.
+                    _pesan, _penting, _dibaca = aksi_penanda(p[0], p[1])
                     msg = _pesan
+                    try:
+                        edit_card(cq, kartu.label_status(_penting, _dibaca))
+                    except Exception as e:
+                        print('status kartu err', type(e).__name__, str(e)[:70])
                     try:
                         api('editMessageReplyMarkup', chat_id=CHAT, message_id=CARD_ID,
                             reply_markup=json.dumps(kartu.kb(
-                                p[1], penting=_penting, dibaca=(p[0] == 'aread'))))
+                                p[1], penting=_penting, dibaca=_dibaca)))
                     except Exception as e:
                         print('markup err', type(e).__name__, str(e)[:60])
                 else:

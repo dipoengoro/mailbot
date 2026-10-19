@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 
 import config as C
 import kartu
+import status_ayn
 import otp as O
 import sumber_arsip as S
 
@@ -122,8 +123,11 @@ def main():
         except Exception:
             pass
         # Bentuk kartu sama dengan kartu biasa, ditambah satu baris kode di atas.
+        st_ayn = status_ayn.baca(i['id']) or {}
         isi = kartu.teks('🔑 <b>kode OTP</b>', akun, dari, subj, i.get('sent'),
                          folder=i.get('folder'), lag_s=lag_s, kode=d.get('kode'),
+                         status=kartu.label_status(st_ayn.get('penting', False),
+                                                   st_ayn.get('dibaca', False)),
                          ekor='arsip : id %s' % i['id'])
         try:
             res = kirim(isi, kartu.kb(i['id']))

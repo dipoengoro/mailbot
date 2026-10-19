@@ -333,7 +333,7 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
             _isi = kartu.teks(
                 '📥 <b>email baru</b>', label, sname(m.get('From')),
                 dec(m.get('Subject')), wib(m.get('Date')), folder=folder,
-                catatan=('status : ✅ sudah dibaca' if sudah else 'status : 🔵 belum dibaca'),
+                catatan='status : %s' % kartu.label_status(False, bool(sudah)),
                 ekor='uid : %s · %d pesan' % (E(i.decode()), len(ids))).split('\n')
             if _otp:
                 _isi.insert(1, _otp)            # tepat di bawah judul

@@ -25,6 +25,7 @@ from datetime import datetime, timedelta, timezone
 
 import config as C
 import kartu
+import status_ayn
 import otp as O
 import sumber_arsip as S
 
@@ -156,9 +157,14 @@ def jalan(mulai_sekarang=False):
                 kode = d.get('kode')
         # Bentuk kartu disusun kartu.teks() supaya notifier, OTP, dan poller
         # cadangan tidak pernah berbeda urutan barisnya.
+        # Status dibaca dari hub supaya field ini ada sejak kartu pertama kali
+        # muncul, bukan baru setelah tombol Lihat ditekan. Hub diam = anggap baru.
+        st_ayn = status_ayn.baca(i['id']) or {}
         isi = kartu.teks('📥 <b>email baru</b>' if UTAMA else '🧪 <b>UJI ARSIP</b>',
                          i.get('akun') or tag, dari, subj, i.get('sent'),
                          folder=folder, lag_s=lag_s, kode=kode,
+                         status=kartu.label_status(st_ayn.get('penting', False),
+                                                   st_ayn.get('dibaca', False)),
                          ekor='arsip : id %s' % i['id'])
         try:
             # Tombol memakai id arsip; handler menerjemahkannya ke (akun, uid) lewat
