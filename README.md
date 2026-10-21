@@ -249,9 +249,38 @@ Kartu akan muncul di Telegram dalam ≤ `MAILBOT_POLL_INTERVAL` detik.
 
 ### 6. Halaman "Lihat" (opsional tapi disarankan)
 
-Tombol 👁 Lihat menulis file HTML ke `MAILBOT_VIEW_DIR` dan mengirim link
-`MAILBOT_VIEW_BASE/<nama-file>`. Nama file memuat token acak 16 karakter, jadi link
-bisa dibuka tanpa login — **jangan** disajikan tanpa HTTPS dan jangan diindeks.
+Tombol 👁 Lihat **tidak** merender apa pun. Dia cuma memesan token acak 16
+karakter (`MAILBOT_VIEW_DIR/jobs/<token>.json`) lalu langsung mengirim link
+`MAILBOT_VIEW_BASE/l/<token>`. Halamannya baru dibuat saat link dibuka, oleh
+`renderd.py`, lalu disimpan di `MAILBOT_VIEW_DIR/cache/`. Tombol jadi menjawab
+seketika; buka pertama 2–5 detik, buka berikutnya seketika (0,1 detik).
+
+`renderd.py` mendengarkan di `MAILBOT_VIEWD_PORT` (bawaan `8098`) dan harus
+diletakkan di belakang reverse proxy pada jalur `/l/*`:
+
+```
+mailview.contoh.id {
+   handle /l/* {
+      reverse_proxy renderd:8098
+   }
+   root * /etc/caddy/diagrams
+   file_server
+   header { Cache-Control "no-store" }
+}
+```
+
+Jalankan sebagai container kecil yang berbagi kode dan volume view:
+
+```bash
+docker run -d --name mailrender --restart unless-stopped \
+  --network proxy-net \
+  -v "$PWD:/cfg:ro" -v "$PWD/view:/view" \
+  python:3.13-alpine sh -c 'apk add --no-cache tzdata >/dev/null 2>&1; exec python3 /cfg/renderd.py'
+```
+
+Token memuat 16 karakter acak, jadi link bisa dibuka tanpa login — **jangan**
+disajikan tanpa HTTPS dan jangan diindeks. Job dan cache lebih tua dari 7 hari
+dibersihkan saat renderd menyala.
 
 Pilihan menyajikannya:
 

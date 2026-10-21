@@ -822,17 +822,16 @@ def do(action, acct, uid):
         return f'🚀 terkirim ke {to[:50]}'
     import re as _re
     if action == 'look':
+        # Halaman TIDAK dirender di sini. Tombol cuma memesan token, lalu
+        # renderd (utas terpisah di container ini) yang membuat halamannya saat
+        # link dibuka. Dulu render memakan 2-5 detik sebelum tombol menjawab.
         import secrets
-        import subprocess
         tok = secrets.token_hex(C.VIEW_TOKEN_BYTES)
-        base = _re.sub(r'[^a-z0-9]', '', acct.split('@')[0].lower())
-        name = f'mail-{base}-{uid}-{tok}.html'
-        out = os.path.join(C.VIEW_DIR, name)
-        os.makedirs(C.VIEW_DIR, exist_ok=True)
-        r = subprocess.run([sys.executable, os.path.join(C.CODE_DIR, 'render.py'), '--acct', acct,
-                            '--uid', str(uid), '--out', out], capture_output=True, text=True)
-        if r.returncode != 0 or not os.path.exists(out):
-            return f'gagal render: {(r.stderr or r.stdout or "")[:120]}'
+        jobs = os.path.join(C.VIEW_DIR, 'jobs')
+        os.makedirs(jobs, exist_ok=True)
+        with open(os.path.join(jobs, tok + '.json'), 'w') as _f:
+            json.dump({'acct': acct, 'uid': int(uid), 'dibuat': time.time()}, _f)
+        name = f'l/{tok}'
         # Lihat = sudah dibaca (seperti email client). Flag HANYA diubah kalau render sukses.
         tandai = ''
         try:
@@ -865,7 +864,8 @@ def do(action, acct, uid):
             tandai = f' · (gagal menandai dibaca: {type(e).__name__})'
         # detail email ikut ditulis di pesan yang sama (biar jelas ini email yang mana)
         return '\n'.join([f'👁 lihat email · {acct} · uid {uid}'] + detail(acct, uid) +
-                         [f'    link : {C.VIEW_BASE}/{name}{tandai}'])
+                         [f'    link : {C.VIEW_BASE}/{name}',
+                          '    (halaman dibuat saat link dibuka)' + tandai])
     if action in ('seen', 'mute', 'arch'):
         tag = ACC[acct]
         M = C.imap(tag)
