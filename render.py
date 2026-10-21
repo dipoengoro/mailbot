@@ -346,7 +346,7 @@ page = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 </style>
 
 </div>
-<script src="mailview.js"></script>
+<script src="/mailview.js"></script>
 </body></html>"""
 
 open(out, 'w').write(page)

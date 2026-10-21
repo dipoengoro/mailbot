@@ -255,6 +255,11 @@ karakter (`MAILBOT_VIEW_DIR/jobs/<token>.json`) lalu langsung mengirim link
 `renderd.py`, lalu disimpan di `MAILBOT_VIEW_DIR/cache/`. Tombol jadi menjawab
 seketika; buka pertama 2–5 detik, buka berikutnya seketika (0,1 detik).
 
+Skrip tombol (`assets/mailview.js`) **wajib disajikan di akar situs** dengan nama
+`/mailview.js` — halaman merujuknya secara absolut. Kalau berkas ini 404, tombol
+"tampilkan gambar" dan "aktifkan link" tampil tapi tidak bereaksi (kejadian
+21 Okt 2026: halaman memakai path relatif sehingga diarahkan ke `/l/mailview.js`).
+
 `renderd.py` mendengarkan di `MAILBOT_VIEWD_PORT` (bawaan `8098`) dan harus
 diletakkan di belakang reverse proxy pada jalur `/l/*`:
 
