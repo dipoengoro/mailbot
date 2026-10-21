@@ -863,6 +863,36 @@ def do(action, acct, uid, arsip=None):
             baris += detail(acct, uid)
         return '\n'.join(baris + [f'    link : {C.VIEW_BASE}/{name}',
                                   '    (halaman dibuat saat link dibuka)' + tanda])
+    if action in ('pstar', 'pread'):
+        # Kartu jalur cadangan hanya membawa (akun, uid); MessageId dibaca dari
+        # berkas jejak yang ditulis poller, lalu status ditulis ke Ayn seperti
+        # tombol jalur utama. Hasilnya: tombol ★/☑️ berperilaku sama di dua jalur.
+        import hashlib
+        kunci = hashlib.sha1(('%s:%s' % (acct, uid)).encode()).hexdigest()[:16]
+        try:
+            d = json.load(open(C.path('fallback/%s.json' % kunci)))
+        except Exception:
+            return '⚠️ data kartu cadangan sudah kedaluwarsa'
+        mid = (d.get('mid') or '').strip()
+        if not mid:
+            return '⚠️ MessageId tidak ada di data kartu'
+        dasar = {'account': acct, 'message_id': mid,
+                 'subject': (d.get('subj') or '')[:500],
+                 'sender': (d.get('dari') or '')[:500],
+                 'sent_at': d.get('sent')}
+        if action == 'pstar':
+            kini = bool(d.get('penting'))
+            hasil = ayn('/api/v1/mail/status', dict(dasar, important=not kini)).get('status') or {}
+            baru = bool(hasil.get('important'))
+            try:
+                d['penting'] = baru
+                json.dump(d, open(C.path('fallback/%s.json' % kunci), 'w'), ensure_ascii=False)
+            except Exception:
+                pass
+            return '⭐ ditandai penting' if baru else '☆ tanda penting dilepas'
+        hasil = ayn('/api/v1/mail/status', dict(dasar, read=True, read_source='bot')).get('status') or {}
+        return '✅ ditandai sudah dibaca' if hasil.get('read_at') else '✅ status dibaca dikirim'
+
     if action in ('seen', 'mute', 'arch'):
         tag = ACC[acct]
         M = C.imap(tag)

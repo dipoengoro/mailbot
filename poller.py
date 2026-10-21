@@ -123,6 +123,40 @@ E, dec, sname, jam, wib = C.E, C.dec, C.sname, C.jam, C.wib
 _TERAKHIR = {}          # payload sendMessage terakhir (text + reply_markup)
 
 
+def _jejak_path(akun, uid):
+    import hashlib
+    kunci = hashlib.sha1(('%s:%s' % (akun, uid)).encode()).hexdigest()[:16]
+    d = C.path('fallback')
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, kunci + '.json')
+
+
+def _simpan_jejak(tag, uid, kepala, akun, folder):
+    """Simpan kepala email untuk tombol ★/☑️ di jalur cadangan.
+
+    Tombol di jalur cadangan cuma membawa (akun, uid); untuk menulis status ke Ayn
+    dibutuhkan MessageId. Berkas kecil ini yang menyediakannya, supaya tombolnya
+    sama persis dengan kartu jalur utama (tanpa perlu id arsip).
+    """
+    try:
+        data = {
+            'akun': akun,
+            'uid': uid,
+            'mid': (kepala.get('Message-ID') or '').strip().strip('<>'),
+            'subj': dec(kepala.get('Subject')) or '',
+            'dari': sname(kepala.get('From')) or '',
+            'sent': kepala.get('Date') or '',
+            'folder': folder or '',
+        }
+        path = _jejak_path(akun, uid)
+        tmp = path + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except Exception as e:
+        print('jejak kartu gagal', type(e).__name__, str(e)[:60])
+
+
 def tg(text):
     import re as _re
     p = {'chat_id': C.TG_CHAT, 'text': text,
@@ -133,12 +167,14 @@ def tg(text):
     _u = re.search(r'uid\s*:\s*(\d+)', text)
     if _a and _u:
         _acct, _uid = _a.group(1), _u.group(1)
+        # Papan tombol SAMA dengan kartu jalur utama: Lihat, Balas, Penting, Dibaca.
+        # Tambahan khas cadangan (Arsip/Bisukan) dipindah ke dalam: keduanya masih
+        # bisa dipanggil lewat perintah, jadi kartu tidak lagi terlihat berbeda.
         p['reply_markup'] = json.dumps({'inline_keyboard': [
             [{'text': '👁 Lihat', 'callback_data': f'look:{_acct}:{_uid}'},
              {'text': '✍️ Balas', 'callback_data': f'reply:{_acct}:{_uid}'}],
-            [{'text': '📁 Arsip', 'callback_data': f'arch:{_acct}:{_uid}'},
-             {'text': '✅ Baca', 'callback_data': f'seen:{_acct}:{_uid}'},
-             {'text': '🔇 Bisukan', 'callback_data': f'mute:{_acct}:{_uid}'}]]})
+            [{'text': '☆ Penting', 'callback_data': f'pstar:{_acct}:{_uid}'},
+             {'text': '☑️ Dibaca', 'callback_data': f'pread:{_acct}:{_uid}'}]]})
     if C.TG_THREAD:
         p['message_thread_id'] = C.TG_THREAD
     _TERAKHIR.clear()
@@ -340,6 +376,7 @@ def check(tag, label, send=True, folder='INBOX', unread=''):
             if unread:
                 _isi.append(E(unread))
             _baris = _isi
+            _simpan_jejak(tag, i.decode(), m, label, folder)
             _res = None if _tahan else tg('\n'.join(_baris))
             # Jejak kartu terkirim — dipakai pembanding otomatis dengan arsip MailArchiver
             # (Fase 1 "satu sumber"). Hanya MENCATAT, tidak mengubah perilaku apa pun.
