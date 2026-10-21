@@ -136,6 +136,7 @@ def pantau():
     """
     print('pantau: menunggu email baru (cek tiap 2 detik)', flush=True)
     terakhir = int(muat_state().get('last_id_ayn') or 0)
+    segar = time.time()
     while True:
         try:
             puncak = int((psql('select coalesce(max(id),0) from mail.message;') or '0').strip() or 0)
@@ -143,6 +144,20 @@ def pantau():
                 sys.argv = [sys.argv[0]]
                 main()
                 terakhir = int(muat_state().get('last_id_ayn') or puncak)
+                segar = time.time()
+            elif time.time() - segar >= 60:
+                # Segarkan cap waktu feed walau tidak ada email baru. Bot memakai
+                # umur berkas ini untuk memutuskan feed masih hidup; kalau tidak
+                # disentuh, setelah 10 menit sepi bot mengira feed mati lalu
+                # mengambil alih lewat IMAP — kartunya jadi format lain (uid,
+                # sisa belum dibaca) dan email lama bisa muncul lagi.
+                _d = {}
+                try:
+                    _d = json.load(open(TUJUAN))
+                except Exception:
+                    _d = {}
+                tulis_feed(_d.get('items') or [])
+                segar = time.time()
         except Exception as e:
             print('pantau galat: %s' % str(e)[:160], flush=True)
             time.sleep(5)
