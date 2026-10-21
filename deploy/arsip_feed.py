@@ -126,6 +126,28 @@ def tulis_detail(items):
         print('detail tersimpan: %d' % n)
 
 
+def pantau():
+    """Mode daemon: duduk, cek id terbaru tiap 2 detik, bangun feed saat berubah.
+
+    Pengganti loop cron 20 detik. Biayanya satu kueri `max(id)` per 2 detik —
+    jauh lebih murah daripada menyusun feed penuh, dan tidak menyentuh jalur
+    penarikan email sama sekali.
+    """
+    print('pantau: menunggu email baru (cek tiap 2 detik)', flush=True)
+    terakhir = int(muat_state().get('last_id_ayn') or 0)
+    while True:
+        try:
+            puncak = int((psql('select coalesce(max(id),0) from mail.message;') or '0').strip() or 0)
+            if puncak != terakhir:
+                sys.argv = [sys.argv[0]]
+                main()
+                terakhir = int(muat_state().get('last_id_ayn') or puncak)
+        except Exception as e:
+            print('pantau galat: %s' % str(e)[:160], flush=True)
+            time.sleep(5)
+        time.sleep(2)
+
+
 def main():
     mulai_sekarang = '--mulai-sekarang' in sys.argv
     if '--status' in sys.argv:
@@ -254,4 +276,7 @@ def kirim_kartu():
 
 
 if __name__ == '__main__':
+    if '--pantau' in sys.argv:
+        pantau()
+        sys.exit(0)
     sys.exit(main())
