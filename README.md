@@ -358,7 +358,11 @@ Detail + contoh perintah: [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md).
 - **Ganti akun** = ubah `MAILBOT_ACCOUNTS` + variabel `IMAP_<TAG>_*`, lalu recreate.
 - **Healthcheck**: `docker inspect --format '{{.State.Health.Status}}' mailbot`
   (`healthy`/`unhealthy`, dan alasannya terlihat di `.State.Health.Log`).
-- **Satu sumber**: kartu email dan OTP hanya dari arsip (`MAILBOT_SUMBER_KARTU=arsip`).
+- **Satu sumber**: kartu email dan OTP hanya dari satu penyusun feed
+  (`MAILBOT_SUMBER_KARTU=arsip`, nama lama; isinya sekarang skema `mail` milik Ayn —
+  lihat `deploy/arsip_feed.py`). Feed ditulis tiap 20 detik dan **mendorong**
+  notifier begitu ada email baru, jadi tidak ada jendela tunggu cron. Cron
+  pengamat tetap ada tiap 5 menit sebagai jaring pengaman.
   Selama arsip sehat, poller IMAP tidur — tidak membaca kotak surat sama sekali, hanya
   menulis denyut tiap 60 detik supaya watchdog tidak berbunyi.
 - **SOP mitigasi arsip** (otomatis, tanpa menunggu perintah):
