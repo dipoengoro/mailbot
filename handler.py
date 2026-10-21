@@ -357,6 +357,10 @@ def arsip_ke_acct_uid(arsip_id):
         raise RuntimeError('detail arsip tidak lengkap (akun/MessageId kosong)')
     if email not in ACC:
         raise RuntimeError('akun %s tidak lagi dipantau' % email)
+    # uid sudah ada di berkas detail (ditulis penyusun feed), jadi tidak perlu
+    # SEARCH IMAP lagi — itulah yang dulu membuat tombol terasa lama.
+    if d.get('uid'):
+        return email, int(d['uid'])
     M = C.imap(ACC[email])
     try:
         for _f in FOLDER_KANDIDAT:
@@ -676,7 +680,7 @@ def on_text(m):
         kb=draft_kb(False))
 
 
-def do(action, acct, uid):
+def do(action, acct, uid, arsip=None):
     st = load()
     if action == 'reply':
         m = head(acct, uid)
@@ -832,40 +836,33 @@ def do(action, acct, uid):
         with open(os.path.join(jobs, tok + '.json'), 'w') as _f:
             json.dump({'acct': acct, 'uid': int(uid), 'dibuat': time.time()}, _f)
         name = f'l/{tok}'
-        # Lihat = sudah dibaca (seperti email client). Flag HANYA diubah kalau render sukses.
-        tandai = ''
+        # Tidak ada kerja IMAP di sini. Penandaan dibaca dititipkan ke antrean
+        # Ayn (mail.action) dan dikerjakan penyalin dalam ≤15 detik; dulu bot
+        # membuka IMAP, menyisir folder untuk mencari uid, lalu STORE — itu yang
+        # membuat tombol terasa lama dan sempat ditekan dua kali.
+        tanda = ''
+        d = {}
         try:
-            import imaplib as _imap
-            _t = ACC[acct]
-            _M = C.imap(_t)
-            # UID itu unik PER FOLDER: jangan asal STORE ke INBOX, nanti yang
-            # ketandai email lain yang kebetulan punya uid sama.
-            _ada = False
-            for _f in FOLDER_KANDIDAT:
-                try:
-                    if _M.select(_f)[0] != 'OK':
-                        continue
-                    _x, _y = _M.uid('SEARCH', None, f'UID {uid}')
-                    if _y and _y[0]:
-                        _ada = True
-                        break
-                except Exception:
-                    continue
-            # Tanpa penjaga ini, uid yang sudah tidak ada (email dihapus/dipindah) membuat
-            # koneksi tidak berada di state SELECTED -> STORE ditolak
-            # "command STORE illegal in state AUTH, only allowed in states SELECTED".
-            if _ada:
-                _M.uid('STORE', uid, '+FLAGS', '(\\Seen)')
-                tandai = ' · ✓ ditandai sudah dibaca'
-            else:
-                tandai = ' · (email tidak ditemukan di mailbox)'
-            C.tutup(_M)
-        except Exception as e:
-            tandai = f' · (gagal menandai dibaca: {type(e).__name__})'
-        # detail email ikut ditulis di pesan yang sama (biar jelas ini email yang mana)
-        return '\n'.join([f'👁 lihat email · {acct} · uid {uid}'] + detail(acct, uid) +
-                         [f'    link : {C.VIEW_BASE}/{name}',
-                          '    (halaman dibuat saat link dibuka)' + tandai])
+            d = arsip_detail(arsip) if arsip else {}
+        except Exception:
+            d = {}
+        mid = (d.get('MessageId') or '').strip()
+        if mid:
+            try:
+                ayn('/api/v1/mail/status', {'account': acct, 'message_id': mid,
+                                            'read': True, 'read_source': 'bot'})
+                tanda = ' · ✓ ditandai dibaca (antrean)'
+            except Exception as e:
+                tanda = f' · (gagal menandai: {type(e).__name__})'
+        baris = [f'👁 lihat email · {acct} · uid {uid}']
+        if d:
+            baris += [f'    dari : {(d.get("From") or "?")[:60]}',
+                      f'    subj : {(d.get("Subject") or "(tanpa subjek)")[:80]}',
+                      f'    tgl  : {d.get("SentDate") or "-"}']
+        else:
+            baris += detail(acct, uid)
+        return '\n'.join(baris + [f'    link : {C.VIEW_BASE}/{name}',
+                                  '    (halaman dibuat saat link dibuka)' + tanda])
     if action in ('seen', 'mute', 'arch'):
         tag = ACC[acct]
         M = C.imap(tag)
@@ -948,7 +945,9 @@ def handle_once():
             try:
                 if len(p) == 2 and p[0] in ('alook', 'areply'):
                     _a, _u = arsip_ke_acct_uid(p[1])
-                    p = ['look' if p[0] == 'alook' else 'reply', _a, _u]
+                    # id arsip diteruskan: tombol Lihat memakai berkas detail
+                    # (subjek/pengirim/tanggal sudah ada di sana) tanpa IMAP.
+                    p = ['look' if p[0] == 'alook' else 'reply', _a, _u, p[1]]
                 if len(p) == 2 and p[0] in ('astar', 'aread'):
                     # Status disimpan Ayn; kartu langsung diperbarui di tempat supaya
                     # baris status dan label tombol berubah tanpa menunggu kartu baru.
@@ -965,7 +964,10 @@ def handle_once():
                     except Exception as e:
                         print('markup err', type(e).__name__, str(e)[:60])
                 else:
-                    msg = (do(p[0], p[1], p[2]) if len(p) == 3 else None) or 'aksi fase C'
+                    if len(p) == 4:
+                        msg = (do(p[0], p[1], p[2], p[3]) or 'aksi fase C')
+                    else:
+                        msg = (do(p[0], p[1], p[2]) if len(p) == 3 else None) or 'aksi fase C'
             except Exception as e:
                 msg = f'gagal: {type(e).__name__}: {str(e)[:130]}'
             # kartunya sendiri diperbarui (status + angka sisa) SEBELUM pesan hasil dikirim,

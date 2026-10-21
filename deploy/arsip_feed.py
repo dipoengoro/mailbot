@@ -78,7 +78,7 @@ def tulis_detail(items):
         return
     ids = ','.join(str(i['id']) for i in items)
     sql = ('select row_to_json(x) from (select id, account_id, folder, message_id, subject, '
-           'from_addr, to_addr, cc_addr, sent_at, internal_at, has_attachments, '
+           'from_addr, to_addr, cc_addr, sent_at, internal_at, has_attachments, uid, '
            "left(text_body, 300000) as teks, left(html_body, 300000) as html "
            'from mail.message where id in (%s)) x;' % ids)
     out = psql(sql)
@@ -103,6 +103,7 @@ def tulis_detail(items):
             'SentDate': d['sent_at'],
             'ReceivedDate': d['internal_at'],
             'HasAttachments': d['has_attachments'],
+            'uid': d['uid'],
             'teks': d['teks'],
             'html': d['html'],
             'akun': d['account_id'],
