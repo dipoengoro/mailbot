@@ -185,7 +185,7 @@ def main():
         return 0
 
     sql = ('select id, account_id, folder, %s, %s, %s, '
-           'to_char(sent_at at time zone \'UTC\', \'YYYY-MM-DD HH24:MI:SS\'), '
+           'to_char(sent_at at time zone \'Asia/Jakarta\', \'YYYY-MM-DD HH24:MI:SS\'), '
            'to_char(internal_at at time zone \'UTC\', \'YYYY-MM-DD HH24:MI:SS\'), '
            'is_outgoing, %s, %s, message_id '
            'from mail.message where id > %d and not is_outgoing order by id limit %d;'

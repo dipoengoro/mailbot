@@ -50,7 +50,7 @@ def kini_wib():
     return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=C.TZ_OFFSET)
 
 
-def muat_state():
+def muat_state() -> dict:
     try:
         return json.load(open(STATE))
     except Exception:
@@ -134,6 +134,16 @@ def jalan(mulai_sekarang=False):
             st['last_id'] = max(st['last_id'], i['id'])
             continue
 
+        # Penjaga kartu dobel: id ditandai SEBELUM kirim, jadi percobaan ulang
+        # setelah timeout tidak mengirim kartu kedua. Kalau kirim gagal, tanda
+        # dilepas supaya putaran berikutnya mencoba lagi.
+        if i['id'] in st.get('terkirim', []):
+            st['last_id'] = max(st['last_id'], i['id'])
+            continue
+        st.setdefault('terkirim', []).append(i['id'])
+        st['terkirim'] = st['terkirim'][-800:]
+        simpan_state(st)
+
         tag = C.EMAIL_TO_TAG.get((i.get('akun') or '').lower()) or (i.get('akun') or '?').split('@')[0]
         try:
             # Lag dihitung dari waktu ARSIP menyimpan, bukan tanggal pengirim.
@@ -177,6 +187,11 @@ def jalan(mulai_sekarang=False):
                 kini_wib().strftime('%Y-%m-%d %H:%M:%S'), tag, i['id'], subj[:80]))
         except Exception as e:
             print('🚨 notif_arsip: gagal kirim id %s (%s)' % (i['id'], type(e).__name__))
+            try:
+                st['terkirim'].remove(i['id'])
+                simpan_state(st)
+            except ValueError:
+                pass
             return 2
         st['last_id'] = max(st['last_id'], i['id'])
         simpan_state(st)
