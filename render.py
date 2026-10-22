@@ -152,6 +152,20 @@ else:
     html = re.sub(r'</?(html|head|body)[^>]*>', '', html, flags=re.I)
 
 before = len(re.findall(r'src\s*=', html, re.I))
+# Pengalihan dan basis URL: meta refresh bisa melempar pembaca ke situs lain
+# begitu halaman dibuka, dan <base> bisa mengubah arti semua URL relatif.
+html = re.sub(r'<meta[^>]+http-equiv\s*=\s*["\']?refresh[^>]*>', '', html, flags=re.I)
+html = re.sub(r'<base[^>]*>', '', html, flags=re.I)
+html = re.sub(r'<link[^>]*>', '', html, flags=re.I)
+# Bingkai dan objek: CSP sudah memblokir pemuatannya, tapi membuang tag-nya lebih
+# jelas dan menghindari kejutan kalau CSP diubah nanti.
+html = re.sub(r'</?(iframe|frame|frameset|object|embed|applet)[^>]*>', '', html, flags=re.I)
+
+# Tautan berskema berbahaya dibuang seluruhnya; teksnya dibiarkan supaya isi
+# email tidak hilang.
+html = re.sub(r'<a\b[^>]*href\s*=\s*["\']?\s*(?:javascript|data|vbscript|blob)[^>]*>(.*?)</a>',
+              r'\1', html, flags=re.I | re.S)
+
 html = re.sub(r'<script.*?</script>', '', html, flags=re.I | re.S)
 html = re.sub(r'<script[^>]*/?>', '', html, flags=re.I)
 html = re.sub(r'\son\w+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)', '', html, flags=re.I)
@@ -167,6 +181,12 @@ def _blokir(m):
 
 html = re.sub(r'(src|background)\s*=\s*("([^"]*)"|\'([^\']*)\'|([^"\'>\s]+))', _blokir, html, flags=re.I)
 html = re.sub(r'<form[^>]*>', '<div>', html, flags=re.I).replace('</form>', '</div>')
+
+# Gambar lewat CSS (background-image: url(https://...)) TIDAK bisa ditahan tombol,
+# jadi dimatikan sekarang. Tanpa ini, piksel pelacak tetap terpanggil saat halaman
+# dibuka walau semua <img> sudah diblokir.
+html = re.sub(r'url\(\s*["\']?\s*(?:https?:)?//[^)\s"\']+\s*["\']?\s*\)', 'none',
+              html, flags=re.I)
 # Link di body: tetap bisa diklik (kamu yang mutusin), tapi tujuannya ditulis di sebelahnya.
 def _link(m):
     href = (m.group(1) or m.group(2) or '').strip()
