@@ -47,11 +47,24 @@ def api(m, **p):
     req = urllib.request.Request(
         f"https://api.telegram.org/bot{C.TG_TOKEN}/{m}",
         data=urllib.parse.urlencode(p).encode())
-    try:
-        with urllib.request.urlopen(req, timeout=30) as f:
-            return json.loads(f.read().decode())
-    except _ue.HTTPError as e:
-        raise RuntimeError('%s %s: %s' % (m, e.code, e.read().decode(errors='replace')[:300]))
+    for percobaan in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as f:
+                return json.loads(f.read().decode())
+        except _ue.HTTPError as e:
+            isi = e.read().decode(errors='replace')
+            if e.code == 429 and percobaan < 2:
+                # Telegram membatasi laju per grup. Menunggu sesuai retry_after
+                # lebih murah daripada gagal lalu diulang berkali-kali; tanpa ini
+                # antrean update menumpuk dan balasan tombol bisa telat menit-menitan.
+                tunggu = 5
+                try:
+                    tunggu = int(json.loads(isi)['parameters']['retry_after'])
+                except Exception:
+                    pass
+                time.sleep(tunggu + 1)
+                continue
+            raise RuntimeError('%s %s: %s' % (m, e.code, isi[:300]))
 
 
 def load():

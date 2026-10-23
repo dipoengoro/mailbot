@@ -69,7 +69,14 @@ def tulis_log(baris):
         f.write(baris + '\n')
 
 
+# Jarak antar kartu. Telegram membatasi sekitar 20 pesan per menit per grup;
+# dulu 0,4 detik (150/menit) sehingga borongan email memicu 429 dan membuat
+# balasan tombol tertunda sampai menit-menitan.
+JEDA_KARTU = float(os.environ.get('MAILBOT_JEDA_KARTU') or 3.2)
+
+
 def kirim(teks, markup=None):
+    import urllib.error as _ue
     p = {'chat_id': CHAT, 'text': teks, 'parse_mode': 'HTML',
          'disable_web_page_preview': 'true', 'message_thread_id': THREAD}
     if markup:
@@ -77,8 +84,21 @@ def kirim(teks, markup=None):
     req = urllib.request.Request(
         'https://api.telegram.org/bot%s/sendMessage' % C.TG_TOKEN,
         data=urllib.parse.urlencode(p).encode())
-    with urllib.request.urlopen(req, timeout=30) as f:
-        return json.loads(f.read().decode())
+    for percobaan in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as f:
+                return json.loads(f.read().decode())
+        except _ue.HTTPError as e:
+            isi = e.read().decode(errors='replace')
+            if e.code == 429 and percobaan < 2:
+                tunggu = 5
+                try:
+                    tunggu = int(json.loads(isi)['parameters']['retry_after'])
+                except Exception:
+                    pass
+                time.sleep(tunggu + 1)
+                continue
+            raise RuntimeError('sendMessage %s: %s' % (e.code, isi[:200]))
 
 
 def jalan(mulai_sekarang=False):
@@ -170,11 +190,17 @@ def jalan(mulai_sekarang=False):
         # Status dibaca dari hub supaya field ini ada sejak kartu pertama kali
         # muncul, bukan baru setelah tombol Lihat ditekan. Hub diam = anggap baru.
         st_ayn = status_ayn.baca(i['id']) or {}
+        _catatan = None
+        if int(i.get('bahaya') or 0) > 0:
+            # Lampiran berbahaya tidak hanya diblokir saat diunduh: kelihatan
+            # sejak kartu pertama, supaya tidak perlu membuka emailnya dulu.
+            _catatan = '⚠️ <b>lampiran berbahaya</b> · %d berkas (unduhan diblokir)' % int(i['bahaya'])
         isi = kartu.teks('📥 <b>email baru</b>' if UTAMA else '🧪 <b>UJI ARSIP</b>',
                          i.get('akun') or tag, dari, subj, i.get('sent'),
                          folder=folder, lag_s=lag_s, kode=kode,
                          status=kartu.label_status(st_ayn.get('penting', False),
                                                    st_ayn.get('dibaca', False)),
+                         catatan=_catatan,
                          ekor='arsip : id %s' % i['id'])
         try:
             # Tombol memakai id arsip; handler menerjemahkannya ke (akun, uid) lewat
@@ -195,7 +221,7 @@ def jalan(mulai_sekarang=False):
             return 2
         st['last_id'] = max(st['last_id'], i['id'])
         simpan_state(st)
-        time.sleep(0.4)
+        time.sleep(JEDA_KARTU)
 
     simpan_state(st)
     return 0

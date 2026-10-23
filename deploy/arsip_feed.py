@@ -139,7 +139,10 @@ def pantau():
     segar = time.time()
     while True:
         try:
-            puncak = int((psql('select coalesce(max(id),0) from mail.message;') or '0').strip() or 0)
+            _t = (psql('select coalesce(max(id),0) from mail.message;') or '').strip()
+            # Ambil angka saja: keluaran psql sesekali membawa baris lain, dan
+            # satu baris aneh tidak boleh menghentikan pemantauan.
+            puncak = int(''.join(ch for ch in _t.splitlines()[-1] if ch.isdigit()) or 0) if _t else 0
             if puncak != terakhir:
                 sys.argv = [sys.argv[0]]
                 main()
@@ -204,6 +207,7 @@ def main():
            'to_char(sent_at at time zone \'Asia/Jakarta\', \'YYYY-MM-DD HH24:MI:SS\'), '
            'to_char(internal_at at time zone \'UTC\', \'YYYY-MM-DD HH24:MI:SS\'), '
            'is_outgoing, %s, %s, message_id '
+           
            'from mail.message where id > %d and not is_outgoing order by id limit %d;'
            % (satu('from_addr', 200), satu('to_addr', 200), satu('subject', 300),
               satu('text_body', POTONG_TEKS), satu('html_body', POTONG_TEKS),
@@ -226,7 +230,23 @@ def main():
             'outgoing': str(p[8]).strip().lower() in ('t', 'true', '1'),
             'teks': p[9], 'html': p[10],
             'mid': p[11].strip(),
+            'bahaya': 0,
         })
+
+    # Lampiran berbahaya dihitung terpisah: kueri utama memakai pemisah '|',
+    # dan HTML email bisa mengandung '|' sehingga kolom bergeser.
+    if items:
+        daftar = ','.join(str(i['id']) for i in items)
+        try:
+            bahaya = psql("select m.id, count(*) from mail.attachment a "
+                          "join mail.message m on m.id = a.message_ref "
+                          "where a.scan_state = 'infeksi' and m.id in (%s) "
+                          "group by 1" % daftar)
+            peta = {b[0]: int(b[1]) for b in (x for x in bahaya if len(x) >= 2)}
+            for i in items:
+                i['bahaya'] = peta.get(str(i['id']), 0)
+        except Exception as e:
+            print('hitung lampiran berbahaya gagal: %s' % type(e).__name__)
 
     # Satu email bisa punya beberapa salinan folder (label Gmail). Ambil satu
     # saja per MessageId, dan jangan ulangi yang sudah pernah masuk feed.
@@ -277,11 +297,15 @@ def kirim_kartu():
     dorongan ini gagal.
     """
     try:
-        r = subprocess.run(
+        # Sengaja tidak ditunggu: mengirim banyak kartu sekarang berjarak ~3 detik
+        # (batas Telegram), jadi menunggunya akan menghentikan pemantauan email
+        # baru selama belasan detik. flock mencegah dua kiriman bertumpuk.
+        subprocess.Popen(
             ['flock', '-n', '/tmp/notif_mailbot.lock',
              'docker', 'exec', 'mailbot', 'python3', '/cfg/notif_arsip.py'],
-            capture_output=True, text=True, timeout=180,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
+        return
         keluaran = (r.stdout or '').strip()
         if keluaran:
             print(keluaran[-500:])
